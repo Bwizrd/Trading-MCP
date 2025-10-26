@@ -1,0 +1,3 @@
+"""
+Chart generation MCP servers.
+"""

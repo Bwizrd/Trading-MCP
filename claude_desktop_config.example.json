@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "trading-charts": {
+      "command": "python",
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/charts/trading_charts_mcp.py"]
+    },
+    "vwap-strategy": {
+      "command": "python", 
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/strategies/vwap_strategy/core.py"]
+    },
+    "ctrader-connector": {
+      "command": "python", 
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/ctrader.py"]
+    },
+    "influxdb-connector": {
+      "command": "python", 
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/influxdb.py"]
+    }
+  }
+}
