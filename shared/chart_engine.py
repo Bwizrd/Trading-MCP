@@ -39,7 +39,11 @@ class ChartEngine:
     Contains NO trading strategy logic - only visualization logic.
     """
     
-    def __init__(self, output_dir: str = "data/charts"):
+    def __init__(self, output_dir: str = None):
+        if output_dir is None:
+            # Use absolute path relative to project root
+            project_root = Path(__file__).parent.parent
+            output_dir = project_root / "data" / "charts"
         self.output_dir = Path(output_dir)
         ensure_directory_exists(str(self.output_dir))
         

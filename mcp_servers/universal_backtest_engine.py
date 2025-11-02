@@ -31,9 +31,20 @@ from shared.backtest_engine import UniversalBacktestEngine
 from shared.strategy_interface import BacktestConfiguration
 from shared.chart_engine import ChartEngine
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)  # Only warnings and errors
+# Configure logging to file for debugging
+log_file = Path(__file__).parent.parent / "logs" / "universal_backtest_engine.log"
+log_file.parent.mkdir(exist_ok=True)
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler(sys.stderr)  # Also log to stderr for debugging
+    ]
+)
 logger = logging.getLogger(__name__)
+logger.info("Universal Backtest Engine starting up...")
 
 # Global components
 data_connector: Optional[DataConnector] = None
@@ -50,14 +61,33 @@ async def get_initialized_components():
     """Get initialized components with proper resource management."""
     global data_connector, strategy_registry, backtest_engine, chart_engine
     
-    if not data_connector:
-        data_connector = DataConnector()
-    if not strategy_registry:
-        strategy_registry = StrategyRegistry()
-    if not backtest_engine:
-        backtest_engine = UniversalBacktestEngine(data_connector)
-    if not chart_engine:
-        chart_engine = ChartEngine()
+    try:
+        logger.info("Initializing components...")
+        
+        if not data_connector:
+            logger.info("Creating DataConnector...")
+            data_connector = DataConnector()
+            logger.info("DataConnector created successfully")
+            
+        if not strategy_registry:
+            logger.info("Creating StrategyRegistry...")
+            strategy_registry = StrategyRegistry()
+            logger.info("StrategyRegistry created successfully")
+            
+        if not backtest_engine:
+            logger.info("Creating UniversalBacktestEngine...")
+            backtest_engine = UniversalBacktestEngine(data_connector)
+            logger.info("UniversalBacktestEngine created successfully")
+            
+        if not chart_engine:
+            logger.info("Creating ChartEngine...")
+            chart_engine = ChartEngine()
+            logger.info("ChartEngine created successfully")
+            
+        logger.info("All components initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize components: {e}", exc_info=True)
+        raise
     
     try:
         yield data_connector, strategy_registry, backtest_engine, chart_engine
