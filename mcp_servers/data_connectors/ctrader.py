@@ -998,7 +998,9 @@ async def optimize_strategy_parameters(params: OptimizationInput) -> str:
             import os
             
             # Create results directory
-            results_dir = "/Users/paul/Sites/PythonProjects/Trading-MCP/optimization_results"
+            from pathlib import Path
+            project_root = Path(__file__).parent.parent.parent
+            results_dir = str(project_root / "optimization_results") if os.path.exists("/mnt/user-data") else "/Users/paul/Sites/PythonProjects/Trading-MCP/optimization_results"
             os.makedirs(results_dir, exist_ok=True)
             
             # Export optimization results

@@ -59,6 +59,9 @@ class StrategyRegistry:
         
         # Auto-discover strategies on initialization
         self.discover_strategies()
+        
+        # Auto-discover and integrate DSL strategies
+        self.integrate_dsl_strategies()
     
     def discover_strategies(self) -> None:
         """
@@ -207,6 +210,26 @@ class StrategyRegistry:
         else:
             return self._strategy_info.copy()
     
+    def integrate_dsl_strategies(self) -> None:
+        """
+        Integrate DSL strategies with the registry.
+        
+        This makes DSL strategies appear alongside code-based strategies.
+        """
+        try:
+            # Import DSL components (only if they exist)
+            from shared.strategies.dsl_interpreter.dsl_loader import DSLLoader, integrate_dsl_with_strategy_registry
+            
+            # Create DSL loader and integrate
+            dsl_loader = DSLLoader()
+            integrate_dsl_with_strategy_registry(self, dsl_loader)
+            
+        except ImportError:
+            # DSL system not available - continue without it
+            pass
+        except Exception as e:
+            print(f"Warning: DSL integration failed: {e}")
+
     def print_strategy_catalog(self) -> None:
         """Print a formatted catalog of all available strategies."""
         print("\n" + "="*80)
@@ -217,14 +240,42 @@ class StrategyRegistry:
             print("No strategies found. Make sure strategy files are in the strategies directory.")
             return
         
-        for name, info in self._strategy_info.items():
-            print(f"\n📦 {name} (v{info['version']})")
-            print(f"   {info['description']}")
-            print(f"   📊 Indicators: {', '.join(info['required_indicators']) if info['required_indicators'] else 'None'}")
-            print(f"   ⚙️  Parameters: {len(info['default_parameters'])} available")
-            print(f"   📁 File: {info['file']}")
+        # Separate code-based and DSL strategies
+        code_strategies = {}
+        dsl_strategies = {}
         
-        print(f"\n💾 Total strategies available: {len(self._strategies)}")
+        for name, info in self._strategy_info.items():
+            if info.get('dsl_strategy', False):
+                dsl_strategies[name] = info
+            else:
+                code_strategies[name] = info
+        
+        # Print code-based strategies
+        if code_strategies:
+            print("\n📦 CODE-BASED STRATEGIES:")
+            for name, info in code_strategies.items():
+                print(f"\n   {name} (v{info['version']})")
+                print(f"   📝 {info['description']}")
+                print(f"   📊 Indicators: {', '.join(info['required_indicators']) if info['required_indicators'] else 'None'}")
+                print(f"   ⚙️  Parameters: {len(info['default_parameters'])} available")
+                print(f"   📁 File: {info['file']}")
+        
+        # Print DSL strategies
+        if dsl_strategies:
+            print(f"\n🤖 DSL STRATEGIES (JSON-Configured):")
+            for name, info in dsl_strategies.items():
+                print(f"\n   {name} (v{info['version']})")
+                print(f"   � {info['description']}")
+                if 'timing' in info:
+                    print(f"   ⏰ Timing: {info['timing']['reference_time']} → {info['timing']['signal_time']}")
+                if 'risk_management' in info:
+                    rm = info['risk_management']
+                    print(f"   🎯 Risk: {rm['stop_loss_pips']}SL / {rm['take_profit_pips']}TP")
+                print(f"   📁 File: {info['file']}")
+        
+        total_code = len(code_strategies)
+        total_dsl = len(dsl_strategies)
+        print(f"\n💾 Total strategies: {total_code} code-based + {total_dsl} DSL = {len(self._strategies)} available")
         print("="*80)
     
     def reload_strategies(self) -> None:
@@ -246,6 +297,10 @@ class StrategyRegistry:
         
         # Rediscover strategies
         self.discover_strategies()
+        
+        # Rediscover DSL strategies
+        self.integrate_dsl_strategies()
+        
         print(f"✅ Reloaded {len(self._strategies)} strategy cartridges")
 
 

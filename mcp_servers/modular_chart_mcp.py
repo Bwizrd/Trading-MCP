@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Modular Chart Engine MCP Server
+Modular Chart MCP Server
 
 Clean chart server that follows proper architecture:
 Strategy Cartridges → Backtest Engine → Chart Engine → Visualizations
@@ -11,34 +11,72 @@ This server:
 3. Contains NO strategy logic - pure visualization service
 """
 
+# NUCLEAR STDOUT SILENCING - Must be first imports
 import sys
 import os
 import logging
-from pathlib import Path
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
-import json
-from contextlib import asynccontextmanager
 
-# Add project root to Python path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Completely disable ALL logging immediately
+logging.disable(logging.CRITICAL)
 
-from mcp.server.fastmcp import FastMCP
-from mcp.types import TextContent
-from pydantic import BaseModel, Field
+# Redirect stdout to null for all imports and initialization
+class NullWriter:
+    def write(self, *args, **kwargs):
+        pass
+    def flush(self, *args, **kwargs):
+        pass
 
-# Project imports - proper modular architecture
-from shared.data_connector import DataConnector
-from shared.strategy_registry import StrategyRegistry
-from shared.backtest_engine import UniversalBacktestEngine
-from shared.chart_engine import ChartEngine
-from shared.strategy_interface import BacktestConfiguration
-from shared.models import Candle
+# Save original stdout for MCP protocol
+_original_stdout = sys.stdout
+_original_stderr = sys.stderr
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)  # Only warnings and errors
-logger = logging.getLogger(__name__)
+# Silence everything during imports
+sys.stdout = NullWriter()
+sys.stderr = NullWriter()
+
+try:
+    from pathlib import Path
+    from typing import Dict, List, Any, Optional
+    from datetime import datetime, timedelta
+    import json
+    from contextlib import asynccontextmanager
+
+    # Add project root to Python path
+    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(project_root))
+
+    from mcp.server.fastmcp import FastMCP
+    from mcp.types import TextContent
+    from pydantic import BaseModel, Field
+
+    # Project imports - proper modular architecture
+    from shared.data_connector import DataConnector
+    from shared.strategy_registry import StrategyRegistry
+    from shared.backtest_engine import UniversalBacktestEngine
+    from shared.chart_engine import ChartEngine
+    from shared.strategy_interface import BacktestConfiguration
+    from shared.models import Candle
+
+finally:
+    # Restore stdout only for MCP protocol
+    sys.stdout = _original_stdout
+    sys.stderr = _original_stderr
+
+# Completely disable ALL logging forever
+logging.disable(logging.CRITICAL)
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+logging.root.handlers = []
+
+# Create null logger that does nothing
+class NullLogger:
+    def info(self, *args, **kwargs): pass
+    def warning(self, *args, **kwargs): pass  
+    def error(self, *args, **kwargs): pass
+    def debug(self, *args, **kwargs): pass
+    def critical(self, *args, **kwargs): pass
+
+logger = NullLogger()
 
 # Initialize FastMCP
 app = FastMCP("modular_chart_server")
@@ -183,7 +221,7 @@ async def create_chart_from_backtest_json(json_filename: str) -> list[TextConten
     
     Args:
         json_filename: Name or path of the JSON file. Can be:
-                      - Just filename: "backtest_EURUSD_20251101_133004.json" (searches in optimization_results/)
+                      - Just filename: "backtest_EURUSD_20251101_133004.json" (searches in outputs directory)
                       - Relative path: "optimization_results/backtest_EURUSD_20251101_133004.json" or "/mnt/user-data/outputs/backtest_EURUSD_20251101_133004.json"  
                       - Absolute path: "/full/path/to/file.json"
         

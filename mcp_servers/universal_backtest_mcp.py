@@ -398,14 +398,16 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         import os
         from datetime import datetime as dt
         
-        # Create results directory
-        results_dir = "optimization_results"
-        os.makedirs(results_dir, exist_ok=True)
+        # Create results directory using absolute path
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent
+        results_dir = project_root / "optimization_results"
+        results_dir.mkdir(exist_ok=True)
         
         # Generate unique filename
         timestamp = dt.now().strftime('%Y%m%d_%H%M%S')
         json_filename = f"backtest_{symbol}_{timestamp}.json"
-        json_filepath = os.path.join(results_dir, json_filename)
+        json_filepath = results_dir / json_filename
         
         # Export complete results to JSON
         results_json = results.to_dict(include_market_data=True)

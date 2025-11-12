@@ -45,14 +45,19 @@ class UniversalBacktestEngine:
     async def run_backtest(
         self,
         strategy: TradingStrategy,
-        config: BacktestConfiguration
+        config: BacktestConfiguration,
+        execution_timeframe: str = "1m"  # Default to 1-minute for precise execution
     ) -> BacktestResults:
         """
-        Run backtest for any strategy using standardized process.
+        Run backtest for any strategy using dual-timeframe approach.
+        
+        - Strategy signals generated on strategy timeframe (config.timeframe)
+        - Trade execution simulated on execution timeframe (default 1m)
         
         Args:
             strategy: Strategy instance implementing TradingStrategy interface
             config: Backtest configuration parameters
+            execution_timeframe: Timeframe for trade execution simulation (default "1m")
             
         Returns:
             BacktestResults: Standardized results object
@@ -67,23 +72,47 @@ class UniversalBacktestEngine:
             if not strategy.is_initialized():
                 strategy.initialize()
             
-            # 3. Fetch market data
-            logger.info(f"Fetching market data for {config.symbol} from {config.start_date} to {config.end_date}")
-            market_data = await self._fetch_market_data(config)
+            # 3. Fetch market data for strategy signals (higher timeframe)
+            logger.info(f"Fetching strategy data for {config.symbol} {config.timeframe} from {config.start_date} to {config.end_date}")
+            strategy_data = await self._fetch_market_data(config)
             
-            if market_data.data.empty:
-                raise ValueError(f"No market data available for {config.symbol} in specified period")
+            if not strategy_data.data or len(strategy_data.data) == 0:
+                raise ValueError(f"No strategy data available for {config.symbol} in specified period")
             
-            # Convert DataFrame to list of Candle objects
-            candles = self._convert_dataframe_to_candles(market_data.data)
+            # 4. Fetch execution data (1-minute precision) if needed
+            execution_candles = None
+            if execution_timeframe != config.timeframe:
+                logger.info(f"Fetching execution data for {config.symbol} {execution_timeframe} from {config.start_date} to {config.end_date}")
+                execution_config = BacktestConfiguration(
+                    symbol=config.symbol,
+                    timeframe=execution_timeframe,
+                    start_date=config.start_date,
+                    end_date=config.end_date,
+                    initial_balance=config.initial_balance,
+                    risk_per_trade=config.risk_per_trade,
+                    stop_loss_pips=config.stop_loss_pips,
+                    take_profit_pips=config.take_profit_pips,
+                    max_open_trades=config.max_open_trades
+                )
+                execution_data = await self._fetch_market_data(execution_config)
+                if execution_data.data:
+                    execution_candles = execution_data.data
+                    execution_candles.sort(key=lambda c: c.timestamp)  # Ensure chronological order
+                    logger.info(f"Fetched {len(execution_candles)} execution candles")
             
-            # 4. Calculate required indicators
+            # Use the Candle objects directly (no conversion needed)
+            strategy_candles = strategy_data.data
+            strategy_candles.sort(key=lambda c: c.timestamp)  # Ensure chronological order
+            
+            # 5. Calculate required indicators
             logger.info(f"Calculating indicators: {strategy.requires_indicators()}")
-            indicators_data = self._calculate_indicators(candles, strategy.requires_indicators())
+            indicators_data = self._calculate_indicators(strategy_candles, strategy.requires_indicators())
             
-            # 5. Run simulation
-            logger.info("Running trading simulation...")
-            trades = await self._run_simulation(strategy, candles, indicators_data, config)
+            # 6. Run simulation with dual timeframes
+            logger.info("Running dual-timeframe trading simulation...")
+            trades = await self._run_dual_timeframe_simulation(
+                strategy, strategy_candles, execution_candles, indicators_data, config
+            )
             
             # 6. Calculate performance statistics
             logger.info("Calculating performance statistics...")
@@ -114,9 +143,9 @@ class UniversalBacktestEngine:
                 start_time=start_time,
                 end_time=end_time,
                 execution_time_seconds=execution_time,
-                data_source=f"{market_data.source.value} ({'cached' if market_data.cached else 'fresh'})",
-                total_candles_processed=len(market_data.data),
-                market_data=candles  # Include market data for chart generation
+                data_source=f"{strategy_data.source} ({'cached' if hasattr(strategy_data, 'cached') and strategy_data.cached else 'fresh'})",
+                total_candles_processed=len(strategy_candles),
+                market_data=strategy_candles  # Include market data for chart generation
             )
             
             logger.info(f"Backtest completed: {results.total_trades} trades, {results.win_rate:.1%} win rate, {results.total_pips:+.1f} pips")
@@ -214,7 +243,12 @@ class UniversalBacktestEngine:
         open_trade = None
         historical_candles = []
         
-        for i, candle in enumerate(candles):
+        # CRITICAL FIX: Sort candles in chronological order (oldest first)
+        # The data connector returns candles in reverse order, but strategies
+        # expect forward chronological processing for correct signal generation
+        sorted_candles = sorted(candles, key=lambda c: c.timestamp)
+        
+        for i, candle in enumerate(sorted_candles):
             # Build historical context (all previous candles)
             historical_candles.append(candle)
             
@@ -262,6 +296,8 @@ class UniversalBacktestEngine:
                 signal = strategy.generate_signal(context)
                 
                 if signal:
+                    logger.info(f"Signal generated: {signal.direction.name} @ {candle.timestamp} - Price: {signal.price:.5f}")
+                    
                     # Create new trade
                     open_trade = Trade(
                         entry_time=candle.timestamp,
@@ -272,6 +308,8 @@ class UniversalBacktestEngine:
                         result=None  # Will be set when trade closes
                     )
                     
+                    logger.info(f"Trade opened: {open_trade.direction.name} @ {open_trade.entry_price:.5f} (SL: {open_trade.stop_loss:.5f}, TP: {open_trade.take_profit:.5f})")
+                    
                     # Notify strategy
                     strategy.on_trade_opened(open_trade, context)
         
@@ -280,7 +318,7 @@ class UniversalBacktestEngine:
             last_candle = candles[-1]
             open_trade.exit_price = last_candle.close
             open_trade.exit_time = last_candle.timestamp
-            open_trade.result = TradeResult.EOD
+            open_trade.result = TradeResult.EOD_CLOSE
             open_trade.pips = self._calculate_pips(
                 open_trade.entry_price,
                 open_trade.exit_price,
@@ -290,6 +328,171 @@ class UniversalBacktestEngine:
             trades.append(open_trade)
         
         return trades
+    
+    async def _run_dual_timeframe_simulation(
+        self,
+        strategy: TradingStrategy,
+        strategy_candles: List[Candle],
+        execution_candles: Optional[List[Candle]],
+        indicators_data: Dict[str, Dict[datetime, float]],
+        config: BacktestConfiguration
+    ) -> List[Trade]:
+        """
+        Run dual-timeframe simulation:
+        - Generate signals on strategy timeframe (strategy_candles)
+        - Execute trades on execution timeframe (execution_candles) for precise entry/exit
+        
+        If execution_candles is None, falls back to single-timeframe simulation.
+        """
+        if execution_candles is None:
+            # Fallback to single-timeframe simulation
+            return await self._run_simulation(strategy, strategy_candles, indicators_data, config)
+        
+        trades = []
+        open_trade = None
+        pending_signals = []  # Signals waiting for execution
+        
+        logger.info(f"Running dual-timeframe simulation: {len(strategy_candles)} strategy candles, {len(execution_candles)} execution candles")
+        
+        # Process strategy candles to generate signals
+        historical_candles = []
+        strategy_signals = []
+        
+        for i, candle in enumerate(strategy_candles):
+            historical_candles.append(candle)
+            
+            # Get indicators for this timestamp
+            current_indicators = {}
+            for indicator_name, indicator_values in indicators_data.items():
+                if candle.timestamp in indicator_values:
+                    current_indicators[indicator_name] = indicator_values[candle.timestamp]
+            
+            # Create strategy context
+            context = StrategyContext(
+                current_candle=candle,
+                historical_candles=historical_candles.copy(),
+                indicators=current_indicators,
+                current_position=open_trade,
+                symbol=config.symbol,
+                timeframe=config.timeframe
+            )
+            
+            # Let strategy process the candle
+            strategy.on_candle_processed(context)
+            
+            # Generate signal if no open position
+            if not open_trade:
+                signal = strategy.generate_signal(context)
+                if signal:
+                    strategy_signals.append({
+                        'timestamp': candle.timestamp,
+                        'signal': signal,
+                        'context': context
+                    })
+                    logger.info(f"Strategy signal generated: {signal.direction.name} @ {candle.timestamp}")
+        
+        # Now process execution candles with generated signals
+        current_signal_index = 0
+        
+        for exec_candle in execution_candles:
+            # Check if we have a pending signal for this time period
+            if current_signal_index < len(strategy_signals):
+                signal_data = strategy_signals[current_signal_index]
+                
+                # Execute signal if execution candle is after signal timestamp
+                if exec_candle.timestamp >= signal_data['timestamp'] and not open_trade:
+                    signal = signal_data['signal']
+                    context = signal_data['context']
+                    
+                    # Create new trade with precise execution price
+                    open_trade = Trade(
+                        entry_time=exec_candle.timestamp,
+                        direction=signal.direction,
+                        entry_price=exec_candle.open,  # Use execution candle open price
+                        stop_loss=self._calculate_stop_loss(exec_candle.open, signal.direction, config.stop_loss_pips),
+                        take_profit=self._calculate_take_profit(exec_candle.open, signal.direction, config.take_profit_pips),
+                        result=None
+                    )
+                    
+                    logger.info(f"Trade opened: {open_trade.direction.name} @ {open_trade.entry_price:.5f} (execution @ {exec_candle.timestamp})")
+                    strategy.on_trade_opened(open_trade, context)
+                    current_signal_index += 1
+            
+            # Check for exit conditions with precise 1-minute data
+            if open_trade:
+                exit_result = self._check_exit_conditions_precise(open_trade, exec_candle, config)
+                if exit_result:
+                    open_trade.exit_price = exit_result['price']
+                    open_trade.exit_time = exec_candle.timestamp
+                    open_trade.result = exit_result['result']
+                    open_trade.pips = self._calculate_pips(
+                        open_trade.entry_price,
+                        open_trade.exit_price,
+                        open_trade.direction,
+                        config.symbol
+                    )
+                    
+                    # Find matching strategy context for trade close notification
+                    strategy_context = StrategyContext(
+                        current_candle=exec_candle,
+                        historical_candles=[exec_candle],
+                        indicators={},
+                        current_position=open_trade,
+                        symbol=config.symbol,
+                        timeframe="1m"
+                    )
+                    strategy.on_trade_closed(open_trade, strategy_context)
+                    
+                    trades.append(open_trade)
+                    logger.info(f"Trade closed: {open_trade.direction.name} @ {open_trade.exit_price:.5f} = {open_trade.pips:+.1f} pips ({open_trade.result.name})")
+                    open_trade = None
+        
+        # Close any remaining open trade
+        if open_trade:
+            last_candle = execution_candles[-1]
+            open_trade.exit_price = last_candle.close
+            open_trade.exit_time = last_candle.timestamp
+            open_trade.result = TradeResult.EOD_CLOSE
+            open_trade.pips = self._calculate_pips(
+                open_trade.entry_price,
+                open_trade.exit_price,
+                open_trade.direction,
+                config.symbol
+            )
+            trades.append(open_trade)
+        
+        return trades
+    
+    def _check_exit_conditions_precise(self, trade: Trade, candle: Candle, config: BacktestConfiguration) -> Optional[Dict[str, Any]]:
+        """Check exit conditions with precise 1-minute candle data."""
+        if trade.direction == TradeDirection.BUY:
+            # Check stop loss hit during this minute
+            if candle.low <= trade.stop_loss:
+                return {
+                    'price': trade.stop_loss,
+                    'result': TradeResult.LOSS
+                }
+            # Check take profit hit during this minute  
+            if candle.high >= trade.take_profit:
+                return {
+                    'price': trade.take_profit,
+                    'result': TradeResult.WIN
+                }
+        else:  # SELL
+            # Check stop loss hit during this minute
+            if candle.high >= trade.stop_loss:
+                return {
+                    'price': trade.stop_loss,
+                    'result': TradeResult.LOSS
+                }
+            # Check take profit hit during this minute
+            if candle.low <= trade.take_profit:
+                return {
+                    'price': trade.take_profit,
+                    'result': TradeResult.WIN
+                }
+        
+        return None
     
     def _check_exit_conditions(self, trade: Trade, candle: Candle, config: BacktestConfiguration) -> Optional[Dict[str, Any]]:
         """Check if trade should be closed based on stop loss, take profit, or other conditions."""

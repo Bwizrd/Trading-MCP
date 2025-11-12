@@ -248,6 +248,83 @@ async def list_tools() -> list[Tool]:
                 "properties": {},
                 "additionalProperties": False
             }
+        ),
+        Tool(
+            name="create_strategy_from_dsl",
+            description="Create a new DSL trading strategy from JSON configuration",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "dsl_config": {
+                        "type": "object",
+                        "description": "Complete DSL strategy configuration as JSON object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Human-readable strategy name"
+                            },
+                            "version": {
+                                "type": "string",
+                                "description": "Version in semantic format (e.g., '1.0.0')"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Detailed description of strategy logic"
+                            },
+                            "timing": {
+                                "type": "object",
+                                "properties": {
+                                    "reference_time": {
+                                        "type": "string",
+                                        "description": "Reference time in HH:MM format"
+                                    },
+                                    "reference_price": {
+                                        "type": "string",
+                                        "enum": ["open", "high", "low", "close"],
+                                        "description": "Which price to use from reference time"
+                                    },
+                                    "signal_time": {
+                                        "type": "string",
+                                        "description": "Signal generation time in HH:MM format"
+                                    }
+                                },
+                                "required": ["reference_time", "reference_price", "signal_time"]
+                            },
+                            "conditions": {
+                                "type": "object",
+                                "properties": {
+                                    "buy": {
+                                        "type": "object",
+                                        "properties": {
+                                            "compare": {"type": "string"}
+                                        },
+                                        "required": ["compare"]
+                                    },
+                                    "sell": {
+                                        "type": "object",
+                                        "properties": {
+                                            "compare": {"type": "string"}
+                                        },
+                                        "required": ["compare"]
+                                    }
+                                },
+                                "required": ["buy", "sell"]
+                            },
+                            "risk_management": {
+                                "type": "object",
+                                "properties": {
+                                    "stop_loss_pips": {"type": "number"},
+                                    "take_profit_pips": {"type": "number"}
+                                },
+                                "required": ["stop_loss_pips", "take_profit_pips"]
+                            }
+                        },
+                        "required": ["name", "version", "description", "timing", "conditions", "risk_management"]
+                    }
+                },
+                "required": ["dsl_config"],
+                "additionalProperties": False
+            }
         )
     ]
 
@@ -273,6 +350,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 
             elif name == "test_data_connectivity":
                 return await handle_test_connectivity(connector)
+                
+            elif name == "create_strategy_from_dsl":
+                return await handle_create_dsl_strategy(registry, arguments)
                 
             else:
                 return [TextContent(
@@ -388,14 +468,16 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         import os
         from datetime import datetime as dt
         
-        # Create results directory
-        results_dir = "optimization_results"
-        os.makedirs(results_dir, exist_ok=True)
+        # Create results directory using absolute path
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent
+        results_dir = project_root / "optimization_results"
+        results_dir.mkdir(exist_ok=True)
         
         # Generate unique filename
         timestamp = dt.now().strftime('%Y%m%d_%H%M%S')
         json_filename = f"backtest_{symbol}_{timestamp}.json"
-        json_filepath = os.path.join(results_dir, json_filename)
+        json_filepath = results_dir / json_filename
         
         # Export complete results to JSON
         results_json = results.to_dict(include_market_data=True)
@@ -405,7 +487,9 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         # Format backtest results
         result_text = format_backtest_results(results)
         
-
+        # Add the full JSON data to the response for Claude Desktop
+        result_text += f"\n\n📊 **COMPLETE BACKTEST DATA (JSON):**"
+        result_text += f"\n```json\n{json.dumps(results_json, indent=2)}\n```"
         
         # Add modular workflow info
         result_text += f"\n\n💾 **Backtest Results Exported (Modular Architecture):**"
@@ -643,6 +727,69 @@ async def handle_test_connectivity(connector: DataConnector) -> list[TextContent
         return [TextContent(
             type="text",
             text=f"❌ Connectivity test failed: {str(e)}"
+        )]
+
+
+async def handle_create_dsl_strategy(registry: StrategyRegistry, arguments: dict) -> list[TextContent]:
+    """Handle creating a new DSL strategy from JSON configuration."""
+    dsl_config = arguments["dsl_config"]
+    
+    try:
+        # Import DSL components
+        from shared.strategies.dsl_interpreter.dsl_loader import get_dsl_loader
+        from shared.strategies.dsl_interpreter.schema_validator import validate_dsl_strategy, DSLValidationError
+        
+        # Validate DSL configuration
+        validate_dsl_strategy(dsl_config)
+        
+        # Get DSL loader and create strategy file
+        dsl_loader = get_dsl_loader()
+        strategy_name = dsl_config["name"]
+        
+        # Create the DSL strategy file
+        json_filepath = dsl_loader.create_dsl_strategy_file(strategy_name, dsl_config)
+        
+        # Reload strategies to include the new DSL strategy
+        registry.reload_strategies()
+        
+        result_text = f"✅ **DSL Strategy Created Successfully!**\n\n"
+        result_text += f"**Strategy Name:** {strategy_name}\n"
+        result_text += f"**Version:** {dsl_config['version']}\n"
+        result_text += f"**Description:** {dsl_config['description']}\n\n"
+        
+        # Show timing details
+        timing = dsl_config['timing']
+        result_text += f"**Timing Logic:**\n"
+        result_text += f"• Reference: {timing['reference_time']} ({timing['reference_price']} price)\n"
+        result_text += f"• Signal: {timing['signal_time']}\n\n"
+        
+        # Show conditions
+        conditions = dsl_config['conditions']
+        result_text += f"**Trading Conditions:**\n"
+        result_text += f"• Buy: {conditions['buy']['compare']}\n"
+        result_text += f"• Sell: {conditions['sell']['compare']}\n\n"
+        
+        # Show risk management
+        risk_mgmt = dsl_config['risk_management']
+        result_text += f"**Risk Management:**\n"
+        result_text += f"• Stop Loss: {risk_mgmt['stop_loss_pips']} pips\n"
+        result_text += f"• Take Profit: {risk_mgmt['take_profit_pips']} pips\n\n"
+        
+        result_text += f"📁 **File Created:** `{json_filepath}`\n"
+        result_text += f"🎮 **Status:** Strategy is now available in cartridge catalog\n"
+        result_text += f"🚀 **Next Step:** Use `run_strategy_backtest(strategy_name=\"{strategy_name}\")` to test it"
+        
+        return [TextContent(type="text", text=result_text)]
+        
+    except DSLValidationError as e:
+        return [TextContent(
+            type="text",
+            text=f"❌ DSL validation failed: {str(e)}"
+        )]
+    except Exception as e:
+        return [TextContent(
+            type="text",
+            text=f"❌ DSL strategy creation failed: {str(e)}"
         )]
 
 

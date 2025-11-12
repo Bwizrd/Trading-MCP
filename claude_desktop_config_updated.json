@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "universal-backtest": {
+      "command": "python",
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/universal_backtest_mcp.py"]
+    },
+    "modular-charts": {
+      "command": "python",
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/modular_chart_mcp.py"]
+    },
+    "ctrader-connector": {
+      "command": "python", 
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/ctrader.py"]
+    },
+    "influxdb-connector": {
+      "command": "python",
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/influxdb.py"]
+    }
+  }
+}

@@ -1,84 +1,185 @@
 """
-Simple Data Connector for Universal Backtest Engine
+Universal Data Connector for Backtest Engine
 
-Compatible with the existing working system while providing
-the interface needed for the modular cartridge system.
+Uses the existing working data fetching functions from the MCP data connectors.
+NO NEW ABSTRACTIONS - uses proven working code.
 """
 
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import asyncio
 import logging
-import httpx
-import pandas as pd
+import sys
+from pathlib import Path
+from dataclasses import dataclass
+from .models import Candle
+
+# Import the working data fetching function
+sys.path.append(str(Path(__file__).parent.parent / "mcp_servers" / "data_connectors"))
+
+# Import the working function directly
+import importlib.util
+spec = importlib.util.spec_from_file_location("influxdb", Path(__file__).parent.parent / "mcp_servers" / "data_connectors" / "influxdb.py")
+influxdb_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(influxdb_module)
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class MarketDataResponse:
+    """Response from market data request."""
+    data: List[Candle]
+    source: str
+    symbol: str
+    timeframe: str
+    start_date: datetime
+    end_date: datetime
+
+
 class DataConnector:
     """
-    Simple data connector that works with the existing system.
+    Universal data connector that uses the existing working _fetch_historical_data function.
+    NO NEW ABSTRACTIONS - direct use of proven working code.
     """
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self):
         """Initialize the data connector."""
-        self.base_url = base_url
-        self.client = None
+        pass
         
-    async def __aenter__(self):
-        """Async context manager entry."""
-        if not self.client:
-            self.client = httpx.AsyncClient(timeout=30.0)
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        if self.client:
-            await self.client.aclose()
-    
-    async def get_symbols(self) -> List[str]:
-        """Get available symbols."""
-        # Return common forex symbols for now
-        return ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURJPY"]
-    
-    async def get_historical_data(
+    async def get_market_data(
         self,
         symbol: str,
         timeframe: str,
         start_date: datetime,
         end_date: datetime,
         **kwargs
-    ) -> pd.DataFrame:
-        """Get historical data."""
-        # For now, generate mock data similar to the working system
-        # In production, this would make actual API calls
+    ) -> MarketDataResponse:
+        """
+        Get market data using the existing working _fetch_historical_data function.
         
-        logger.info(f"Getting historical data for {symbol} {timeframe} from {start_date} to {end_date}")
+        This method provides the interface expected by UniversalBacktestEngine.
+        """
+        logger.info(f"Fetching market data for {symbol} {timeframe} from {start_date} to {end_date}")
         
-        # Generate mock data
-        date_range = pd.date_range(start=start_date, end=end_date, freq='1min')
-        mock_data = []
+        try:
+            # Use the correct API endpoints directly instead of broken _fetch_historical_data
+            import httpx
+            
+            # Get symbol mapping first
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                symbols_response = await client.get("http://localhost:8000/symbols")
+                symbols_data = symbols_response.json()
+                
+                # Find pair ID for symbol
+                pair_id = None
+                symbols_list = symbols_data.get('symbols', [])
+                for sym in symbols_list:
+                    # Check both exact match and with _SB suffix
+                    if sym.get('name') == symbol or sym.get('name') == f"{symbol}_SB":
+                        pair_id = sym.get('value')
+                        break
+                
+                if not pair_id:
+                    raise Exception(f"Symbol {symbol} not found in symbols list")
+                
+                # Try InfluxDB first (fastest)
+                bars = 100  # Default number of bars
+                influx_url = f"http://localhost:8000/getDataFromDB?pair={pair_id}&timeframe={timeframe}&bars={bars}"
+                logger.info(f"Trying InfluxDB: {influx_url}")
+                
+                influx_response = await client.get(influx_url)
+                
+                if influx_response.status_code == 200:
+                    influx_data = influx_response.json()
+                    if influx_data and 'data' in influx_data and len(influx_data['data']) > 0:
+                        data_frame = influx_data['data']
+                        data_source = "InfluxDB"
+                    else:
+                        raise Exception("No data from InfluxDB")
+                else:
+                    # Fallback to date range API
+                    start_iso = start_date.strftime('%Y-%m-%dT00:00:00.000Z') if isinstance(start_date, datetime) else f"{start_date}T00:00:00.000Z"
+                    end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z') if isinstance(end_date, datetime) else f"{end_date}T23:59:59.000Z"
+                    
+                    date_url = f"http://localhost:8000/getDataByDates?pair={pair_id}&timeframe={timeframe}&startDate={start_iso}&endDate={end_iso}"
+                    logger.info(f"Trying date range: {date_url}")
+                    
+                    date_response = await client.get(date_url)
+                    if date_response.status_code == 200:
+                        date_data = date_response.json()
+                        if 'data' in date_data and len(date_data['data']) > 0:
+                            data_frame = date_data['data']
+                            data_source = "cTrader API"
+                        else:
+                            raise Exception("No data in date range response")
+                    else:
+                        raise Exception(f"Date range API failed: {date_response.status_code}")
+            
+            if data_frame and len(data_frame) > 0:
+            
+                # Convert JSON data to Candle objects
+                candles = []
+                for item in data_frame:
+                    # Convert Unix timestamp (milliseconds) to datetime
+                    timestamp = datetime.fromtimestamp(item['timestamp'] / 1000)
+                    
+                    candle = Candle(
+                        timestamp=timestamp,
+                        open=float(item['open']),
+                        high=float(item['high']),
+                        low=float(item['low']),
+                        close=float(item['close']),
+                        volume=int(item.get('volume', 0))
+                    )
+                    candles.append(candle)
+                
+                logger.info(f"Successfully fetched {len(candles)} candles from {data_source}")
+                return MarketDataResponse(
+                    data=candles,
+                    source=data_source,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+        except Exception as e:
+            logger.error(f"Data fetching failed: {e}")
         
-        base_price = 1.0500 if symbol == "EURUSD" else 1.2500
-        
-        for i, timestamp in enumerate(date_range[:2000]):  # Limit for performance
-            price = base_price + (i % 100) * 0.0001
-            mock_data.append({
-                'timestamp': timestamp,
-                'open': price,
-                'high': price + 0.0005,
-                'low': price - 0.0005,
-                'close': price + 0.0002,
-                'volume': 1000 + (i % 500)
-            })
-        
-        return pd.DataFrame(mock_data)
+        # If failed, return empty response
+        logger.error("Data fetching failed")
+        return MarketDataResponse(
+            data=[],
+            source="Failed",
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_date,
+            end_date=end_date
+        )
+    
+    async def get_symbols(self) -> List[str]:
+        """Get available symbols."""
+        return ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURJPY"]
     
     async def test_connectivity(self) -> Dict[str, Any]:
-        """Test connection."""
+        """Test connectivity to the API server."""
+        try:
+            # Test using the existing working function
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get("http://localhost:8000/health")
+                if response.status_code == 200:
+                    return {
+                        "status": "connected",
+                        "api_server": True,
+                        "message": "✅ API Server on port 8000 responding"
+                    }
+        except Exception as e:
+            logger.warning(f"API server test failed: {e}")
+        
         return {
-            "status": "connected",
-            "message": "DataConnector is working",
-            "influxdb": True,  # Mock success
-            "ctrader": True    # Mock success
+            "status": "disconnected", 
+            "api_server": False,
+            "message": "❌ API Server on port 8000 not responding"
         }
