@@ -187,7 +187,20 @@ def validate_dsl_strategy(strategy_config: Dict[str, Any]) -> bool:
 
 def _validate_required_fields(config: Dict[str, Any]) -> None:
     """Validate all required fields are present."""
-    required_fields = ["name", "version", "description", "timing", "conditions", "risk_management"]
+    # Base required fields for all strategies
+    required_fields = ["name", "version", "description", "conditions", "risk_management"]
+    
+    # Check if this is an indicator-based strategy
+    has_indicators = "indicators" in config and config["indicators"]
+    has_timing = "timing" in config and config["timing"]
+    
+    # Either timing OR indicators must be present (but not necessarily both)
+    if not has_timing and not has_indicators:
+        raise ValueError("Strategy must have either 'timing' (time-based) or 'indicators' (indicator-based) configuration")
+    
+    # If it's time-based, timing is required
+    if has_timing and not has_indicators:
+        required_fields.append("timing")
     
     for field in required_fields:
         if field not in config:
@@ -216,6 +229,10 @@ def _validate_field_types(config: Dict[str, Any]) -> None:
 
 def _validate_timing_logic(config: Dict[str, Any]) -> None:
     """Validate timing configuration."""
+    # Skip timing validation for indicator-based strategies
+    if "timing" not in config:
+        return
+        
     timing = config["timing"]
     
     # Check required timing fields
@@ -266,13 +283,23 @@ def _validate_conditions(config: Dict[str, Any]) -> None:
         if not isinstance(condition["compare"], str):
             raise ValueError(f"'{condition_type}' compare must be a string")
         
-        # Validate comparison logic contains required variables
+        # Validate comparison logic based on strategy type
         compare_str = condition["compare"]
-        required_vars = ["signal_price", "reference_price"]
         
-        for var in required_vars:
-            if var not in compare_str:
-                raise ValueError(f"'{condition_type}' condition must reference '{var}'")
+        # Check if this is an indicator-based strategy
+        has_indicators = "indicators" in config and config["indicators"]
+        
+        if has_indicators:
+            # For indicator-based strategies, validate indicator references
+            # No specific validation needed - indicators will be validated separately
+            pass
+        else:
+            # For time-based strategies, require signal_price and reference_price
+            required_vars = ["signal_price", "reference_price"]
+            
+            for var in required_vars:
+                if var not in compare_str:
+                    raise ValueError(f"'{condition_type}' condition must reference '{var}'")
         
         # Validate comparison operators
         valid_operators = [">", "<", ">=", "<=", "==", "!="]
