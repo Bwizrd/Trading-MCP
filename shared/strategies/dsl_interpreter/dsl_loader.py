@@ -84,7 +84,8 @@ class DSLLoader:
             
             # Store DSL configuration and metadata
             self._dsl_strategies[strategy_name] = dsl_config
-            self._dsl_info[strategy_name] = {
+            # Build info dict with conditional timing
+            info_dict = {
                 "class_name": "DSLStrategy",
                 "description": dsl_config["description"],
                 "version": dsl_config["version"],
@@ -93,10 +94,19 @@ class DSLLoader:
                 "module": f"dsl_strategies.{json_file.stem}",
                 "file": str(json_file),
                 "dsl_strategy": True,  # Mark as DSL strategy
-                "timing": dsl_config["timing"],
                 "conditions": dsl_config["conditions"],
                 "risk_management": dsl_config["risk_management"]
             }
+            
+            # Add timing only if present (time-based strategies)
+            if "timing" in dsl_config:
+                info_dict["timing"] = dsl_config["timing"]
+            
+            # Add indicators only if present (indicator-based strategies)
+            if "indicators" in dsl_config:
+                info_dict["indicators"] = dsl_config["indicators"]
+            
+            self._dsl_info[strategy_name] = info_dict
             
             print(f"✅ Registered DSL strategy: {strategy_name} (v{dsl_config['version']})")
             
