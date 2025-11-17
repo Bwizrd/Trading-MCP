@@ -161,6 +161,7 @@ class DSLValidationError(Exception):
 def validate_dsl_strategy(strategy_config: Dict[str, Any]) -> bool:
     """
     Validate DSL strategy configuration against schema.
+    Routes to appropriate validator based on strategy type.
     
     Args:
         strategy_config: Dictionary containing DSL strategy configuration
@@ -172,17 +173,59 @@ def validate_dsl_strategy(strategy_config: Dict[str, Any]) -> bool:
         DSLValidationError: If validation fails with detailed error message
     """
     try:
-        # Basic schema validation using manual checks (no jsonschema dependency)
-        _validate_required_fields(strategy_config)
-        _validate_field_types(strategy_config)
-        _validate_timing_logic(strategy_config)
-        _validate_conditions(strategy_config)
-        _validate_risk_management(strategy_config)
+        # Detect strategy type
+        has_indicators = "indicators" in strategy_config and strategy_config["indicators"]
+        has_timing = "timing" in strategy_config and strategy_config["timing"]
         
-        return True
+        if has_indicators and not has_timing:
+            # Indicator-based strategy
+            return _validate_indicator_based_strategy(strategy_config)
+        elif has_timing and not has_indicators:
+            # Time-based strategy (existing)
+            return _validate_time_based_strategy(strategy_config)
+        else:
+            raise ValueError("Strategy must be either time-based (with timing) OR indicator-based (with indicators), not both or neither")
         
     except Exception as e:
         raise DSLValidationError(f"DSL strategy validation failed: {str(e)}")
+
+
+def _validate_time_based_strategy(strategy_config: Dict[str, Any]) -> bool:
+    """
+    Validate time-based DSL strategy (original validation logic).
+    
+    Args:
+        strategy_config: Dictionary containing time-based DSL strategy configuration
+        
+    Returns:
+        bool: True if valid
+    """
+    # Original validation logic - unchanged
+    _validate_required_fields(strategy_config)
+    _validate_field_types(strategy_config)
+    _validate_timing_logic(strategy_config)
+    _validate_conditions(strategy_config)
+    _validate_risk_management(strategy_config)
+    return True
+
+
+def _validate_indicator_based_strategy(strategy_config: Dict[str, Any]) -> bool:
+    """
+    Validate indicator-based DSL strategy.
+    
+    Args:
+        strategy_config: Dictionary containing indicator-based DSL strategy configuration
+        
+    Returns:
+        bool: True if valid
+    """
+    # Validate required fields for indicator-based strategies
+    _validate_indicator_required_fields(strategy_config)
+    _validate_field_types(strategy_config)  # Same as time-based
+    _validate_indicators_configuration(strategy_config)
+    _validate_indicator_conditions(strategy_config)
+    _validate_risk_management(strategy_config)  # Same as time-based
+    return True
 
 
 def _validate_required_fields(config: Dict[str, Any]) -> None:
@@ -342,6 +385,90 @@ def validate_dsl_file(file_path: str) -> Dict[str, Any]:
         raise DSLValidationError(f"Invalid JSON in DSL strategy file: {e}")
     except Exception as e:
         raise DSLValidationError(f"DSL file validation failed: {e}")
+
+
+def _validate_indicator_required_fields(config: Dict[str, Any]) -> None:
+    """Validate required fields for indicator-based strategies."""
+    required_fields = ["name", "version", "description", "indicators", "conditions", "risk_management"]
+    
+    for field in required_fields:
+        if field not in config:
+            raise ValueError(f"Missing required field for indicator-based strategy: {field}")
+        
+        if not config[field]:
+            raise ValueError(f"Field '{field}' cannot be empty")
+
+
+def _validate_indicators_configuration(config: Dict[str, Any]) -> None:
+    """Validate indicators configuration for indicator-based strategies."""
+    indicators = config["indicators"]
+    
+    if not isinstance(indicators, list) or len(indicators) == 0:
+        raise ValueError("'indicators' must be a non-empty list")
+    
+    required_indicator_fields = ["type", "period", "alias"]
+    valid_indicator_types = ["SMA", "EMA", "RSI"]
+    
+    aliases = set()
+    for i, indicator in enumerate(indicators):
+        # Check required fields
+        for field in required_indicator_fields:
+            if field not in indicator:
+                raise ValueError(f"Indicator {i}: Missing required field '{field}'")
+        
+        # Validate indicator type
+        if indicator["type"] not in valid_indicator_types:
+            raise ValueError(f"Indicator {i}: Invalid type '{indicator['type']}'. Must be one of: {valid_indicator_types}")
+        
+        # Validate period
+        if not isinstance(indicator["period"], int) or indicator["period"] < 1 or indicator["period"] > 200:
+            raise ValueError(f"Indicator {i}: 'period' must be an integer between 1 and 200")
+        
+        # Validate alias
+        if not isinstance(indicator["alias"], str) or len(indicator["alias"]) < 1:
+            raise ValueError(f"Indicator {i}: 'alias' must be a non-empty string")
+        
+        # Check for duplicate aliases
+        if indicator["alias"] in aliases:
+            raise ValueError(f"Indicator {i}: Duplicate alias '{indicator['alias']}'")
+        aliases.add(indicator["alias"])
+
+
+def _validate_indicator_conditions(config: Dict[str, Any]) -> None:
+    """Validate conditions for indicator-based strategies."""
+    conditions = config["conditions"]
+    
+    # Check required condition fields
+    if "buy" not in conditions or "sell" not in conditions:
+        raise ValueError("Both 'buy' and 'sell' conditions are required")
+    
+    # Get indicator aliases for validation
+    indicator_aliases = {ind["alias"] for ind in config["indicators"]}
+    
+    # Validate buy and sell conditions
+    for condition_type in ["buy", "sell"]:
+        condition = conditions[condition_type]
+        
+        if "compare" not in condition:
+            raise ValueError(f"'{condition_type}' condition must have 'compare' field")
+        
+        if not isinstance(condition["compare"], str):
+            raise ValueError(f"'{condition_type}' compare must be a string")
+        
+        # Validate that comparison uses valid indicator aliases
+        compare_str = condition["compare"]
+        
+        # Check that at least one indicator alias is referenced
+        aliases_found = [alias for alias in indicator_aliases if alias in compare_str]
+        if not aliases_found:
+            raise ValueError(f"'{condition_type}' condition must reference at least one indicator alias: {list(indicator_aliases)}")
+        
+        # Validate comparison operators
+        valid_operators = [">", "<", ">=", "<=", "==", "!="]
+        has_operator = any(op in compare_str for op in valid_operators)
+        
+        if not has_operator:
+            raise ValueError(f"'{condition_type}' condition must contain a comparison operator: {valid_operators}")
 
 
 def get_dsl_schema() -> Dict[str, Any]:
