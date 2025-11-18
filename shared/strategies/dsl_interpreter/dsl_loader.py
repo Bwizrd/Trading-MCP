@@ -54,7 +54,7 @@ class DSLLoader:
         This scans JSON files and validates them as DSL strategies.
         """
         if not self.dsl_strategies_directory.exists():
-            print(f"DSL strategies directory does not exist: {self.dsl_strategies_directory}")
+            # print(f"DSL strategies directory does not exist: {self.dsl_strategies_directory}")
             return
         
         # Clear existing registrations
@@ -66,7 +66,7 @@ class DSLLoader:
             try:
                 self._load_dsl_strategy_from_file(json_file)
             except Exception as e:
-                print(f"Warning: Failed to load DSL strategy from {json_file}: {e}")
+                import logging; logging.warning(f"Failed to load DSL strategy from {json_file}: {e}")
     
     def _load_dsl_strategy_from_file(self, json_file: Path) -> None:
         """
@@ -108,12 +108,12 @@ class DSLLoader:
             
             self._dsl_info[strategy_name] = info_dict
             
-            print(f"✅ Registered DSL strategy: {strategy_name} (v{dsl_config['version']})")
+            # print(f"✅ Registered DSL strategy: {strategy_name} (v{dsl_config['version']})")
             
         except DSLValidationError as e:
-            print(f"Warning: DSL validation failed for {json_file}: {e}")
+            import logging; logging.warning(f"DSL validation failed for {json_file}: {e}")
         except Exception as e:
-            print(f"Warning: Could not load DSL strategy from {json_file}: {e}")
+            import logging; logging.warning(f"Could not load DSL strategy from {json_file}: {e}")
     
     def get_dsl_strategy_names(self) -> List[str]:
         """
@@ -197,9 +197,9 @@ class DSLLoader:
         
         Useful during development when DSL JSON files are modified.
         """
-        print("🔄 Reloading DSL strategy configurations...")
-        self.discover_dsl_strategies()
-        print(f"✅ Reloaded {len(self._dsl_strategies)} DSL strategies")
+        # print("🔄 Reloading DSL strategy configurations...")
+        self._load_dsl_strategies()
+        # print(f"✅ Reloaded {len(self._dsl_strategies)} DSL strategies")
     
     def create_dsl_strategy_file(self, name: str, dsl_config: Dict[str, Any]) -> str:
         """
@@ -262,7 +262,7 @@ class DSLLoader:
             return True
             
         except Exception as e:
-            print(f"Warning: Failed to delete DSL strategy file: {e}")
+            import logging; logging.warning(f"Failed to delete DSL strategy file: {e}")
             return False
     
     def print_dsl_catalog(self) -> None:
@@ -342,6 +342,16 @@ def integrate_dsl_with_strategy_registry(strategy_registry, dsl_loader: DSLLoade
                 
                 def on_candle_processed(self, context) -> None:
                     return self._dsl_strategy.on_candle_processed(context)
+                
+                @property
+                def is_indicator_based(self) -> bool:
+                    """Expose the underlying DSL strategy's indicator-based flag."""
+                    return getattr(self._dsl_strategy, 'is_indicator_based', False)
+                
+                @property
+                def indicator_values(self) -> Dict[str, float]:
+                    """Expose the underlying DSL strategy's indicator values."""
+                    return getattr(self._dsl_strategy, 'indicator_values', {})
             
             return DSLStrategyWrapper
         
@@ -353,7 +363,7 @@ def integrate_dsl_with_strategy_registry(strategy_registry, dsl_loader: DSLLoade
         dsl_info = dsl_loader.get_dsl_strategy_info(strategy_name)
         strategy_registry._strategy_info[strategy_name] = dsl_info
     
-    print(f"✅ Integrated {len(dsl_loader.get_dsl_strategy_names())} DSL strategies with StrategyRegistry")
+    # print(f"✅ Integrated {len(dsl_loader.get_dsl_strategy_names())} DSL strategies with StrategyRegistry")
 
 
 # Global DSL loader instance

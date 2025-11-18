@@ -13,6 +13,8 @@ from typing import Dict, Any, List, Optional
 from datetime import time, datetime, date
 import re
 
+# Indicator calculation imports are done conditionally in methods that need them
+
 from shared.models import Candle, TradeDirection
 from shared.strategy_interface import TradingStrategy, StrategyContext, Signal, SignalStrength
 from .schema_validator import validate_dsl_strategy, DSLValidationError
@@ -52,12 +54,17 @@ class DSLStrategy(TradingStrategy):
         
         super().__init__()
         
-        # Parse timing configuration
-        timing = dsl_config["timing"]
-        self.reference_time = self._parse_time(timing["reference_time"])
-        self.signal_time = self._parse_time(timing["signal_time"])
-        self.reference_price_type = timing["reference_price"]
+        # Determine strategy type
+        self.is_indicator_based = bool("indicators" in dsl_config and dsl_config["indicators"])
         
+        if self.is_indicator_based:
+            # Indicator-based strategy initialization
+            self._init_indicator_based(dsl_config)
+        else:
+            # Time-based strategy initialization (original logic)
+            self._init_time_based(dsl_config)
+        
+        # Common initialization for both types
         # Parse conditions
         self.buy_condition = dsl_config["conditions"]["buy"]["compare"]
         self.sell_condition = dsl_config["conditions"]["sell"]["compare"]
@@ -70,11 +77,35 @@ class DSLStrategy(TradingStrategy):
         self.min_pip_distance = risk_mgmt.get("min_pip_distance", 0.0001)
         
         # Strategy state
-        self.reference_price = None
-        self.last_reference_date = None
         self.daily_trade_count = 0
         self.last_trade_date = None
         
+    def _init_time_based(self, dsl_config: Dict[str, Any]) -> None:
+        """Initialize time-based strategy (original logic)."""
+        # Parse timing configuration
+        timing = dsl_config["timing"]
+        self.reference_time = self._parse_time(timing["reference_time"])
+        self.signal_time = self._parse_time(timing["signal_time"])
+        self.reference_price_type = timing["reference_price"]
+        
+        # Time-based strategy state
+        self.reference_price = None
+        self.last_reference_date = None
+    
+    def _init_indicator_based(self, dsl_config: Dict[str, Any]) -> None:
+        """Initialize indicator-based strategy."""
+        # No timing fields for indicator-based strategies
+        self.reference_time = None
+        self.signal_time = None
+        self.reference_price_type = None
+        self.reference_price = None
+        self.last_reference_date = None
+        
+        # Indicator-based strategy state
+        self.candle_history = []
+        self.indicator_values = {}
+        self.previous_indicator_values = {}
+    
     def _parse_time(self, time_str: str) -> time:
         """Parse time string (HH:MM) to time object."""
         hour, minute = map(int, time_str.split(":"))
@@ -101,10 +132,14 @@ class DSLStrategy(TradingStrategy):
         """
         Generate trading signal based on DSL configuration.
         
-        This implements the core DSL logic:
+        For time-based strategies:
         1. Capture reference price at reference_time
         2. At signal_time, compare current price to reference price
         3. Generate signal based on conditions
+        
+        For indicator-based strategies:
+        1. Check indicator conditions every candle
+        2. Generate signal based on crossovers or threshold conditions
         
         Args:
             context: Current market context
@@ -113,33 +148,80 @@ class DSLStrategy(TradingStrategy):
             Signal or None if no signal should be generated
         """
         candle = context.current_candle
-        current_time = candle.timestamp.time()
         current_date = candle.timestamp.date()
         
-        # Debug: Log key timing events
-        candle_date_str = candle.timestamp.strftime('%Y-%m-%d')
-        candle_time_str = candle.timestamp.strftime('%H:%M')
+        if self.is_indicator_based:
+            return self._generate_indicator_signal(context)
+        else:
+            return self._generate_time_based_signal(context)
+            
+    def _generate_indicator_signal(self, context: StrategyContext) -> Optional[Signal]:
+        """Generate signal for indicator-based strategies."""
+        candle = context.current_candle
+        current_date = candle.timestamp.date()
         
-        if candle_date_str in ['2025-11-10', '2025-11-11']:
-            print(f"[DSL DEBUG] {candle_date_str} {candle_time_str}: ref_time={self.reference_time}, signal_time={self.signal_time}, ref_price={self.reference_price}")
+        # Check daily trade limit
+        if self.last_trade_date == current_date and self.daily_trade_count >= self.max_daily_trades:
+            return None
+            
+        # Skip if already in position
+        if context.current_position:
+            return None
+            
+        # Need indicators calculated
+        if not self.indicator_values:
+            return None
+            
+        # Evaluate indicator conditions (includes crossover detection)
+        signal_direction = self._evaluate_conditions(0.0, 0.0)  # Not used for indicators
+        
+        if signal_direction is None:
+            return None
+            
+        # Calculate signal strength - for indicators, use distance between MAs
+        strength = self._calculate_indicator_signal_strength()
+        
+        # Create signal
+        return Signal(
+            direction=signal_direction,
+            strength=strength,
+            confidence=0.8,  # High confidence for crossover signals
+            price=candle.close,
+            reason=self._generate_indicator_signal_reason(signal_direction),
+            timestamp=candle.timestamp,
+            metadata={
+                "strategy_type": "indicator_crossover",
+                "indicators": dict(self.indicator_values)
+            }
+        )
+        
+    def _generate_time_based_signal(self, context: StrategyContext) -> Optional[Signal]:
+        """Generate signal for time-based strategies (original logic)."""
+        candle = context.current_candle
+        current_time = candle.timestamp.time()
+        current_date = candle.timestamp.date()
+
+        # Debug: Log key timing events (commented to avoid JSON contamination)
+        # candle_date_str = candle.timestamp.strftime('%Y-%m-%d')
+        # candle_time_str = candle.timestamp.strftime('%H:%M')
+        # if candle_date_str in ['2025-11-10', '2025-11-11']:
+        #     print(f"[DSL DEBUG] {candle_date_str} {candle_time_str}: ref_time={self.reference_time}, signal_time={self.signal_time}, ref_price={self.reference_price}")
         
         # Step 1: Capture reference price at reference_time
         if current_time == self.reference_time:
             self.reference_price = self._get_price_from_candle(candle, self.reference_price_type)
             self.last_reference_date = current_date
-            print(f"[DSL DEBUG] REFERENCE CAPTURED: {candle_date_str} {candle_time_str} @ {self.reference_price:.5f}")
+            # print(f"[DSL DEBUG] REFERENCE CAPTURED: {candle_date_str} {candle_time_str} @ {self.reference_price:.5f}")
             return None  # No signal at reference time, just capture price
-        
+
         # Step 2: Generate signal at signal_time (only if we have reference price)
         if current_time != self.signal_time:
             return None
-        
+
         # Must have reference price from earlier today
         if self.reference_price is None or self.last_reference_date != current_date:
-            print(f"[DSL DEBUG] NO REFERENCE: {candle_date_str} {candle_time_str}, ref_price={self.reference_price}, last_ref_date={self.last_reference_date}")
-            return None
-        
-        # Check daily trade limit
+            # print(f"[DSL DEBUG] NO REFERENCE: {candle_date_str} {candle_time_str}, ref_price={self.reference_price}, last_ref_date={self.last_reference_date}")
+            return None        # Check daily trade limit
         if self.last_trade_date == current_date and self.daily_trade_count >= self.max_daily_trades:
             return None
         
@@ -158,16 +240,17 @@ class DSLStrategy(TradingStrategy):
         # Step 3: Evaluate conditions
         signal_direction = self._evaluate_conditions(signal_price, self.reference_price)
         
-        print(f"[DSL DEBUG] SIGNAL TIME: {candle_date_str} {candle_time_str}, signal_price={signal_price:.5f}, ref_price={self.reference_price:.5f}, direction={signal_direction}")
+        # Debug prints commented to avoid JSON contamination
+        # print(f"[DSL DEBUG] SIGNAL TIME: {candle_date_str} {candle_time_str}, signal_price={signal_price:.5f}, ref_price={self.reference_price:.5f}, direction={signal_direction}")
         
         if signal_direction is None:
-            print(f"[DSL DEBUG] NO SIGNAL: conditions not met")
+            # print(f"[DSL DEBUG] NO SIGNAL: conditions not met")
             return None
         
         # Calculate signal strength based on price distance
         strength = self._calculate_signal_strength(price_distance, signal_price)
         
-        print(f"[DSL DEBUG] *** CREATING SIGNAL *** {str(signal_direction)} @ {signal_price:.5f} (strength: {str(strength)})")
+        # print(f"[DSL DEBUG] *** CREATING SIGNAL *** {str(signal_direction)} @ {signal_price:.5f} (strength: {str(strength)})")
         
         # Create signal with DSL metadata
         signal = Signal(
@@ -222,21 +305,74 @@ class DSLStrategy(TradingStrategy):
         Returns:
             TradeDirection or None if no condition is met
         """
-        # Create evaluation context
-        eval_context = {
-            "signal_price": signal_price,
-            "reference_price": reference_price
-        }
+        if self.is_indicator_based:
+            return self._evaluate_indicator_conditions()
+        else:
+            # Time-based strategy evaluation (original logic)
+            eval_context = {
+                "signal_price": signal_price,
+                "reference_price": reference_price
+            }
+            
+            # Check buy condition
+            if self._evaluate_condition(self.buy_condition, eval_context):
+                return TradeDirection.BUY
+            
+            # Check sell condition  
+            if self._evaluate_condition(self.sell_condition, eval_context):
+                return TradeDirection.SELL
+            
+            return None
+            
+    def _evaluate_indicator_conditions(self) -> Optional[TradeDirection]:
+        """
+        Evaluate indicator-based conditions with crossover detection.
         
+        Returns:
+            TradeDirection or None if no condition is met
+        """
+        # Need current and previous values for crossover detection
+        if not self.indicator_values or not self.previous_indicator_values:
+            return None
+            
         # Check buy condition
-        if self._evaluate_condition(self.buy_condition, eval_context):
+        buy_config = self.dsl_config["conditions"]["buy"]
+        if self._check_indicator_condition(buy_config):
             return TradeDirection.BUY
-        
-        # Check sell condition  
-        if self._evaluate_condition(self.sell_condition, eval_context):
+            
+        # Check sell condition
+        sell_config = self.dsl_config["conditions"]["sell"] 
+        if self._check_indicator_condition(sell_config):
             return TradeDirection.SELL
-        
+            
         return None
+        
+    def _check_indicator_condition(self, condition_config: Dict[str, Any]) -> bool:
+        """
+        Check if an indicator-based condition is met, including crossover detection.
+        
+        Args:
+            condition_config: Condition configuration from JSON
+            
+        Returns:
+            bool: True if condition is met
+        """
+        compare_str = condition_config["compare"]
+        needs_crossover = condition_config.get("crossover", False)
+        
+        # Evaluate current condition
+        current_result = self._evaluate_condition(compare_str, self.indicator_values)
+        
+        if not needs_crossover:
+            return current_result
+            
+        # For crossover, check that condition is true now but was false before
+        if not current_result:
+            return False
+            
+        # Check previous condition was false (crossover occurred)
+        previous_result = self._evaluate_condition(compare_str, self.previous_indicator_values)
+        return not previous_result
     
     def _evaluate_condition(self, condition_str: str, context: Dict[str, float]) -> bool:
         """
@@ -253,7 +389,15 @@ class DSLStrategy(TradingStrategy):
             # Replace variables with actual values
             expression = condition_str
             for var_name, var_value in context.items():
-                expression = expression.replace(var_name, str(var_value))
+                if var_value is not None:
+                    expression = expression.replace(var_name, str(var_value))
+            
+            # Check if all variables were replaced
+            import re
+            remaining_vars = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*', expression)
+            if any(var not in ['and', 'or', 'not'] for var in remaining_vars):
+                # Some variables not replaced, condition can't be evaluated
+                return False
             
             # Validate expression contains only allowed characters
             allowed_pattern = r'^[\d\.\+\-\*\/\(\)\s><!=]+$'
@@ -265,7 +409,9 @@ class DSLStrategy(TradingStrategy):
             return bool(result)
             
         except Exception as e:
-            print(f"Warning: DSL condition evaluation failed for '{condition_str}': {e}")
+            # Log warning instead of printing to avoid JSON contamination
+            import logging
+            logging.warning(f"DSL condition evaluation failed for '{condition_str}': {e}")
             return False
     
     def _calculate_signal_strength(self, price_distance: float, signal_price: float) -> SignalStrength:
@@ -308,17 +454,19 @@ class DSLStrategy(TradingStrategy):
     
     def on_trade_opened(self, trade, context: StrategyContext) -> None:
         """Called when a trade is opened."""
-        print(f"DSL Strategy '{self.get_name()}': Trade opened - {trade.direction.value} {context.symbol} at {trade.entry_price:.5f}")
-        ref_price_str = f"{self.reference_price:.5f}" if self.reference_price is not None else "None"
-        print(f"  Reference: {self.reference_time.strftime('%H:%M')} {self.reference_price_type} = {ref_price_str}")
-        print(f"  Signal: {self.signal_time.strftime('%H:%M')} price = {trade.entry_price:.5f}")
+        # Trade logging commented to avoid JSON contamination
+        # print(f"DSL Strategy '{self.get_name()}': Trade opened - {trade.direction.value} {context.symbol} at {trade.entry_price:.5f}")
+        # ref_price_str = f"{self.reference_price:.5f}" if self.reference_price else "None"
+        # print(f"  Reference: {self.reference_time.strftime('%H:%M')} {self.reference_price_type} = {ref_price_str}")
+        # print(f"  Signal: {self.signal_time.strftime('%H:%M')} price = {trade.entry_price:.5f}")
     
     def on_trade_closed(self, trade, context: StrategyContext) -> None:
         """Called when a trade is closed."""
         result_emoji = "✅" if trade.result.value == "WIN" else "❌" if trade.result.value == "LOSS" else "⚖️"
-        print(f"DSL Strategy '{self.get_name()}': Trade closed {result_emoji}")
-        print(f"  Entry: {trade.entry_price:.5f} → Exit: {trade.exit_price:.5f}")
-        print(f"  Result: {trade.pips:+.1f} pips ({trade.result.value})")
+        # Trade result logging commented to avoid JSON contamination
+        # print(f"DSL Strategy '{self.get_name()}': Trade closed {result_emoji}")
+        # print(f"  Entry: {trade.entry_price:.5f} → Exit: {trade.exit_price:.5f}")
+        # print(f"  Result: {trade.pips:+.1f} pips ({trade.result.value})")
     
     def on_candle_processed(self, context: StrategyContext) -> None:
         """Called after each candle is processed."""
@@ -328,9 +476,103 @@ class DSLStrategy(TradingStrategy):
         if current_date != self.last_trade_date:
             self.daily_trade_count = 0
         
-        # Reset reference price at start of new day
-        if current_date != self.last_reference_date:
-            self.reference_price = None
+        if self.is_indicator_based:
+            # Calculate indicators for indicator-based strategies
+            self._calculate_indicators(context.current_candle)
+        else:
+            # Reset reference price at start of new day for time-based strategies
+            if current_date != self.last_reference_date:
+                self.reference_price = None
+
+    def _calculate_indicators(self, candle) -> None:
+        """Calculate indicators for indicator-based strategies."""
+        # Import libraries when needed
+        try:
+            import pandas as pd
+            import ta
+        except ImportError as e:
+            # Log warning instead of printing to avoid JSON contamination
+            import logging
+            logging.warning(f"Missing required libraries for indicator calculations: {e}")
+            return
+            
+        # Store candle in history
+        self.candle_history.append({
+            'open': candle.open,
+            'high': candle.high,
+            'low': candle.low,
+            'close': candle.close,
+            'volume': getattr(candle, 'volume', 0)
+        })
+        
+        # Keep max 300 candles for memory efficiency
+        if len(self.candle_history) > 300:
+            self.candle_history = self.candle_history[-300:]
+        
+        # Need enough data for calculations
+        if len(self.candle_history) < 2:
+            return
+        
+        # Convert to DataFrame for TA library
+        df = pd.DataFrame(self.candle_history)
+        
+        # Store previous values for crossover detection
+        self.previous_indicator_values = self.indicator_values.copy()
+        
+        # Calculate each indicator defined in the configuration
+        if 'indicators' in self.dsl_config:
+            for indicator in self.dsl_config['indicators']:
+                ind_type = indicator['type']
+                period = indicator['period']
+                alias = indicator['alias']
+                
+                try:
+                    if ind_type == 'SMA' and len(df) >= period:
+                        sma = ta.trend.sma_indicator(df['close'], window=period)
+                        self.indicator_values[alias] = float(sma.iloc[-1])
+                    elif ind_type == 'EMA' and len(df) >= period:
+                        ema = ta.trend.ema_indicator(df['close'], window=period)
+                        self.indicator_values[alias] = float(ema.iloc[-1])
+                    elif ind_type == 'RSI' and len(df) >= period:
+                        rsi = ta.momentum.rsi(df['close'], window=period)
+                        self.indicator_values[alias] = float(rsi.iloc[-1])
+                except Exception as e:
+                    # Log warning instead of printing to avoid JSON contamination
+                    import logging
+                    logging.warning(f"Error calculating {alias} ({ind_type}): {e}")
+                    
+    def _calculate_indicator_signal_strength(self) -> SignalStrength:
+        """Calculate signal strength for indicator-based strategies."""
+        # For MA crossover, strength depends on distance between MAs
+        if 'fast_ma' in self.indicator_values and 'slow_ma' in self.indicator_values:
+            fast_ma = self.indicator_values['fast_ma']
+            slow_ma = self.indicator_values['slow_ma']
+            distance = abs(fast_ma - slow_ma)
+            
+            # Convert distance to strength (larger distance = stronger signal)
+            if distance > 0.0050:  # 50 pips
+                return SignalStrength.VERY_STRONG
+            elif distance > 0.0030:  # 30 pips
+                return SignalStrength.STRONG
+            elif distance > 0.0015:  # 15 pips
+                return SignalStrength.MODERATE
+            else:
+                return SignalStrength.WEAK
+        
+        return SignalStrength.MODERATE  # Default
+        
+    def _generate_indicator_signal_reason(self, direction: TradeDirection) -> str:
+        """Generate human-readable reason for indicator signal."""
+        if 'fast_ma' in self.indicator_values and 'slow_ma' in self.indicator_values:
+            fast_ma = self.indicator_values['fast_ma']
+            slow_ma = self.indicator_values['slow_ma']
+            
+            if direction == TradeDirection.BUY:
+                return f"MA Crossover BUY: SMA20 ({fast_ma:.5f}) crossed above SMA50 ({slow_ma:.5f})"
+            else:
+                return f"MA Crossover SELL: SMA20 ({fast_ma:.5f}) crossed below SMA50 ({slow_ma:.5f})"
+        
+        return f"Indicator signal: {direction.value}"
 
 
 # Helper function for creating DSL strategies from JSON
@@ -392,7 +634,9 @@ if __name__ == "__main__":
     
     try:
         strategy = DSLStrategy(sample_config)
-        print(f"✅ DSL Strategy created: {strategy.get_name()} v{strategy.get_version()}")
-        print(f"📝 Description: {strategy.get_description()}")
+        # Success prints commented to avoid JSON contamination
+        # print(f"✅ DSL Strategy created: {strategy.get_name()} v{strategy.get_version()}")
+        # print(f"📝 Description: {strategy.get_description()}")
     except Exception as e:
-        print(f"❌ DSL Strategy creation failed: {e}")
+        # print(f"❌ DSL Strategy creation failed: {e}")
+        pass  # Silent failure to avoid JSON contamination

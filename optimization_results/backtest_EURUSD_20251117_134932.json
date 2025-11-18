@@ -1,0 +1,171 @@
+{
+  "strategy_name": "MA Crossover Strategy",
+  "strategy_version": "1.0.0",
+  "configuration": {
+    "symbol": "EURUSD",
+    "start_date": "2025-11-10",
+    "end_date": "2025-11-17",
+    "timeframe": "30m",
+    "stop_loss_pips": 15,
+    "take_profit_pips": 25,
+    "initial_balance": 10000,
+    "risk_per_trade": 0.02,
+    "max_open_trades": 1,
+    "commission_per_trade": 0.0
+  },
+  "trades": [],
+  "summary": {
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "win_rate": 0.0,
+    "total_pips": 0.0,
+    "profit_factor": 0.0,
+    "average_win": 0.0,
+    "average_loss": 0.0,
+    "largest_win": 0.0,
+    "largest_loss": 0.0
+  },
+  "risk_metrics": {
+    "max_drawdown": 0.0,
+    "max_consecutive_losses": 0,
+    "max_consecutive_wins": 0
+  },
+  "execution": {
+    "start_time": "2025-11-17T13:49:30.910911",
+    "end_time": "2025-11-17T13:49:32.771313",
+    "execution_time_seconds": 1.860402,
+    "data_source": "InfluxDB (fresh)",
+    "total_candles_processed": 16
+  },
+  "market_data": [
+    {
+      "timestamp": "2025-11-14T14:00:00",
+      "open": 1.16376,
+      "high": 1.16378,
+      "low": 1.16284,
+      "close": 1.16328,
+      "volume": 4702.0
+    },
+    {
+      "timestamp": "2025-11-14T14:30:00",
+      "open": 1.16327,
+      "high": 1.1638,
+      "low": 1.16207,
+      "close": 1.16231,
+      "volume": 5758.0
+    },
+    {
+      "timestamp": "2025-11-14T15:00:00",
+      "open": 1.1623,
+      "high": 1.16252,
+      "low": 1.16153,
+      "close": 1.16186,
+      "volume": 5674.0
+    },
+    {
+      "timestamp": "2025-11-14T15:30:00",
+      "open": 1.16184,
+      "high": 1.16222,
+      "low": 1.16058,
+      "close": 1.16127,
+      "volume": 4812.0
+    },
+    {
+      "timestamp": "2025-11-14T16:00:00",
+      "open": 1.16126,
+      "high": 1.16223,
+      "low": 1.16095,
+      "close": 1.16169,
+      "volume": 3784.0
+    },
+    {
+      "timestamp": "2025-11-14T16:30:00",
+      "open": 1.16168,
+      "high": 1.16206,
+      "low": 1.1613,
+      "close": 1.16167,
+      "volume": 3458.0
+    },
+    {
+      "timestamp": "2025-11-14T17:00:00",
+      "open": 1.16165,
+      "high": 1.16178,
+      "low": 1.16077,
+      "close": 1.16133,
+      "volume": 3300.0
+    },
+    {
+      "timestamp": "2025-11-14T17:30:00",
+      "open": 1.16134,
+      "high": 1.16143,
+      "low": 1.16094,
+      "close": 1.16136,
+      "volume": 2696.0
+    },
+    {
+      "timestamp": "2025-11-14T18:00:00",
+      "open": 1.16137,
+      "high": 1.16155,
+      "low": 1.16094,
+      "close": 1.16153,
+      "volume": 2630.0
+    },
+    {
+      "timestamp": "2025-11-14T18:30:00",
+      "open": 1.16154,
+      "high": 1.16179,
+      "low": 1.1614,
+      "close": 1.16163,
+      "volume": 2366.0
+    },
+    {
+      "timestamp": "2025-11-14T19:00:00",
+      "open": 1.16161,
+      "high": 1.16188,
+      "low": 1.16157,
+      "close": 1.16176,
+      "volume": 2200.0
+    },
+    {
+      "timestamp": "2025-11-14T19:30:00",
+      "open": 1.16177,
+      "high": 1.16197,
+      "low": 1.16156,
+      "close": 1.16177,
+      "volume": 2220.0
+    },
+    {
+      "timestamp": "2025-11-14T20:00:00",
+      "open": 1.16178,
+      "high": 1.16205,
+      "low": 1.16166,
+      "close": 1.16199,
+      "volume": 1880.0
+    },
+    {
+      "timestamp": "2025-11-14T20:30:00",
+      "open": 1.16198,
+      "high": 1.16227,
+      "low": 1.16189,
+      "close": 1.16202,
+      "volume": 2094.0
+    },
+    {
+      "timestamp": "2025-11-14T21:00:00",
+      "open": 1.16203,
+      "high": 1.16234,
+      "low": 1.16192,
+      "close": 1.16212,
+      "volume": 1061.0
+    },
+    {
+      "timestamp": "2025-11-14T21:30:00",
+      "open": 1.16211,
+      "high": 1.16223,
+      "low": 1.1618,
+      "close": 1.16218,
+      "volume": 1193.0
+    }
+  ]
+}

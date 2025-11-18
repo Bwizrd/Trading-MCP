@@ -2,7 +2,7 @@
   "mcpServers": {
     "trading-charts": {
       "command": "python",
-      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/charts/trading_charts_mcp.py"]
+      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/modular_chart_engine.py"]
     },
     "vwap-strategy": {
       "command": "python", 

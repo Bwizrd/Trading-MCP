@@ -52,6 +52,63 @@ chart_engine: Optional[ChartEngine] = None
 logger = logging.getLogger(__name__)
 
 
+def _calculate_ma_indicators(candles: List[Candle]) -> Dict[str, List[float]]:
+    """
+    Calculate Moving Average indicators for MA Crossover strategies.
+    
+    Args:
+        candles: List of market candles
+        
+    Returns:
+        Dictionary with SMA20 and SMA50 values
+    """
+    print(f"🔧 _calculate_ma_indicators called with {len(candles)} candles")
+    
+    try:
+        import pandas as pd
+        import ta
+        print("🔧 Successfully imported pandas and ta")
+    except ImportError as e:
+        print(f"🔧 ImportError: {e}")
+        logger.warning("pandas or ta library not available for indicator calculation")
+        return {}
+    
+    if len(candles) < 50:  # Need at least 50 candles for SMA50
+        print(f"🔧 Insufficient candles: {len(candles)} < 50")
+        logger.warning(f"Insufficient candles ({len(candles)}) for SMA50 calculation")
+        return {}
+    
+    # Convert candles to DataFrame
+    df = pd.DataFrame([
+        {
+            'close': candle.close,
+            'open': candle.open,
+            'high': candle.high,
+            'low': candle.low,
+            'volume': candle.volume or 0
+        }
+        for candle in candles
+    ])
+    
+    indicators = {}
+    
+    try:
+        # Calculate SMA20 (Fast MA)
+        sma20 = ta.trend.sma_indicator(df['close'], window=20)
+        indicators['SMA20 (Fast)'] = sma20.fillna(0).tolist()
+        
+        # Calculate SMA50 (Slow MA) 
+        sma50 = ta.trend.sma_indicator(df['close'], window=50)
+        indicators['SMA50 (Slow)'] = sma50.fillna(0).tolist()
+        
+        logger.info(f"Calculated MA indicators: SMA20 ({len(sma20)} values), SMA50 ({len(sma50)} values)")
+        
+    except Exception as e:
+        logger.error(f"Error calculating MA indicators: {e}")
+        
+    return indicators
+
+
 # Input Models
 class ChartBacktestInput(BaseModel):
     """Input for generating charts from strategy backtests."""
@@ -314,13 +371,28 @@ async def create_chart_from_backtest_json(json_filename: str) -> list[TextConten
                 total_candles_processed=backtest_data['execution']['total_candles_processed']
             )
             
+            # Calculate indicators based on strategy type
+            indicators = {}
+            if "MA Crossover" in strategy_name or "crossover" in strategy_name.lower():
+                # Calculate SMA20 and SMA50 for MA Crossover strategies
+                print(f"🔧 DEBUG: Calculating MA indicators for {strategy_name} with {len(candles)} candles")
+                indicators = _calculate_ma_indicators(candles)
+                print(f"🔧 DEBUG: Calculated {len(indicators)} indicators: {list(indicators.keys())}")
+            else:
+                print(f"🔧 DEBUG: Not an MA strategy: {strategy_name}")
+            
             # Generate chart using Chart Engine (pure visualization)
-            chart_title = f"{strategy_name} Strategy - {symbol} (from JSON)"
+            # Fix duplicate "Strategy" in title
+            clean_title = strategy_name.replace(" Strategy", "").strip()
+            chart_title = f"{clean_title} Strategy - {symbol}"
+            print(f"🔧 DEBUG: Creating chart with title '{chart_title}' and {len(indicators)} indicators")
             chart_path = chart_eng.create_comprehensive_chart(
                 candles=candles,
                 backtest_results=results,
+                indicators=indicators,
                 title=chart_title
             )
+            print(f"🔧 DEBUG: Chart created at: {chart_path}")
             
             # Return success message
             result_text = f"📊 **Interactive Chart Created from JSON!**\n\n"

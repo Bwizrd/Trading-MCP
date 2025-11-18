@@ -58,7 +58,11 @@ class ChartEngine:
             'loss_trade': '#F44336',
             'vwap': '#FF9800',
             'candle_up': '#4CAF50',
-            'candle_down': '#F44336'
+            'candle_down': '#F44336',
+            'sma20 (fast)': '#2196F3',  # Blue for fast MA
+            'sma50 (slow)': '#FF9800',  # Orange for slow MA
+            'fast_ma': '#2196F3',       # Alternative naming
+            'slow_ma': '#FF9800',       # Alternative naming
         }
     
     def create_comprehensive_chart(
@@ -247,19 +251,45 @@ class ChartEngine:
     
     def _add_indicators(self, fig, df: pd.DataFrame, indicators: Dict[str, List[float]], row: int):
         """Add technical indicators to price chart."""
+        logger.info(f"Adding {len(indicators)} indicators to chart")
+        
         for indicator_name, values in indicators.items():
-            if len(values) == len(df):
+            # Filter out NaN/zero values for cleaner display
+            filtered_values = []
+            filtered_timestamps = []
+            
+            for i, value in enumerate(values):
+                if i < len(df) and value > 0:  # Only show non-zero values
+                    filtered_values.append(value)
+                    filtered_timestamps.append(df.iloc[i]['timestamp'])
+            
+            if len(filtered_values) > 0:
+                # Smart color selection based on indicator name
                 color = self.colors.get(indicator_name.lower(), '#FF9800')
+                
+                # Enhanced styling for MA lines
+                line_width = 2.5 if 'sma' in indicator_name.lower() else 2
+                line_dash = None
+                
+                if 'fast' in indicator_name.lower() or 'sma20' in indicator_name.lower():
+                    color = '#2196F3'  # Blue for fast MA
+                elif 'slow' in indicator_name.lower() or 'sma50' in indicator_name.lower():
+                    color = '#FF5722'  # Orange-red for slow MA
+                
                 fig.add_trace(
                     go.Scatter(
-                        x=df['timestamp'],
-                        y=values,
+                        x=filtered_timestamps,
+                        y=filtered_values,
                         mode='lines',
                         name=indicator_name,
-                        line=dict(color=color, width=2)
+                        line=dict(color=color, width=line_width, dash=line_dash),
+                        hovertemplate=f'{indicator_name}: %{{y:.5f}}<extra></extra>',
+                        showlegend=True
                     ),
                     row=row, col=1
                 )
+                
+                logger.info(f"Added {indicator_name} with {len(filtered_values)} points, color: {color}")
     
     def _add_trade_signals(self, fig, trades: List[Trade], row: int):
         """Add trade entry signals as markers."""

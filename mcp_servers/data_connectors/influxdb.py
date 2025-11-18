@@ -19,6 +19,7 @@ Features:
 
 import sys
 import os
+import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from typing import Optional, List, Dict, Any
@@ -37,6 +38,9 @@ from config.settings import CTRADER_API_CONFIG
 # Initialize the MCP server
 mcp = FastMCP("influxdb_data_connector")
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
 # Constants
 config = get_config()
 API_BASE_URL = config["ctrader_api_url"]
@@ -45,15 +49,33 @@ API_PASSWORD = config["ctrader_api_password"]
 
 # Symbol ID mapping (from your API)
 SYMBOL_IDS = {
-    "EURUSD": 1,
-    "GBPUSD": 14,
-    "USDJPY": 18,
-    "AUDUSD": 2,
-    "USDCAD": 17,
+    "EURUSD": 185,
+    "GBPUSD": 199,
+    "USDJPY": 226,
+    "USDCHF": 222,
+    "AUDUSD": 158,
+    "USDCAD": 221,
+    "NZDUSD": 211,
+    "EURGBP": 175,
+    "EURJPY": 177,
+    "EURCHF": 173,
+    "EURAUD": 171,
+    "EURCAD": 172,
+    "EURNZD": 180,
+    "GBPJPY": 192,
+    "GBPCHF": 191,
     "GBPAUD": 189,
-    "EURJPY": 7,
-    "GBPJPY": 16,
-    # Add more as needed
+    "GBPCAD": 190,
+    "GBPNZD": 195,
+    "AUDJPY": 155,
+    "AUDNZD": 156,
+    "AUDCAD": 153,
+    "NZDJPY": 210,
+    "CADJPY": 162,
+    "CHFJPY": 163,
+    "GER40": 200,
+    "UK100": 217,
+    "US30": 219,
 }
 
 # Timeframe mapping
@@ -343,28 +365,28 @@ async def _fetch_from_ctrader_api(
     timeframe: str = "30m"
 ) -> List[Dict[str, Any]]:
     '''
-    Fetch historical data directly from cTrader API.
-    Uses /getDataByDates endpoint.
-    Fallback when InfluxDB doesn't have data.
+    Fetch historical data from cTrader API with automatic InfluxDB population.
+    Uses /getData endpoint which automatically saves data to InfluxDB.
+    This ensures future requests can use InfluxDB for faster retrieval.
     '''
     symbol_id = _get_symbol_id(symbol)
     if not symbol_id:
         raise ValueError(f"Unknown symbol: {symbol}")
     
-    # Convert dates to millisecond timestamps
+    # Calculate the date range for the /getData endpoint
     start_dt = datetime.strptime(start_date, '%Y-%m-%d')
     end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    days_diff = (end_dt - start_dt).days + 1
     
-    start_timestamp = int(start_dt.timestamp() * 1000)
-    end_timestamp = int(end_dt.timestamp() * 1000)
+    # Use range format for /getData endpoint (e.g., "-7d", "-30d")
+    range_str = f"-{days_diff}d"
     
     data = await _make_api_request(
-        "/getDataByDates",
+        "/getData",
         params={
             "pair": symbol_id,
             "timeframe": timeframe,
-            "startDate": start_timestamp,
-            "endDate": end_timestamp
+            "range": range_str
         }
     )
     
@@ -392,20 +414,24 @@ async def _fetch_historical_data(
     timeframe: str = "30m"
 ) -> tuple[List[Dict[str, Any]], str]:
     '''
-    Fetch historical data intelligently:
-    1. Check if data exists in InfluxDB
+    Fetch historical data intelligently with automatic InfluxDB population:
+    1. Check if InfluxDB has sufficient data for the requested date range
     2. If yes, use InfluxDB (faster)
-    3. If no, use cTrader API
+    3. If no, use cTrader API (/getData) which automatically populates InfluxDB
     
     Returns: (candles, data_source)
     '''
+    # Parse date range for validation
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    start_ts = int(start_dt.timestamp() * 1000)
+    end_ts = int(end_dt.timestamp() * 1000)
+    
     # First, check InfluxDB availability
     influx_info = await _check_influxdb_data_availability(symbol, timeframe)
     
     if influx_info["available"]:
         # Calculate approximate number of bars needed
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         days_diff = (end_dt - start_dt).days
         
         # Estimate bars per day based on timeframe
@@ -422,22 +448,27 @@ async def _fetch_historical_data(
             candles = await _fetch_from_influxdb(symbol, timeframe, num_bars)
             
             # Filter candles to date range
-            start_ts = int(start_dt.timestamp() * 1000)
-            end_ts = int(end_dt.timestamp() * 1000)
-            
             filtered = [
                 c for c in candles
                 if start_ts <= c["timestamp"] <= end_ts
             ]
             
-            if filtered:
+            # Check if we have sufficient data for the date range
+            # For indicator-based strategies, we need at least 50 candles for SMA50
+            min_required_candles = max(50, estimated_bars // 2)
+            
+            if len(filtered) >= min_required_candles:
+                logger.info(f"InfluxDB has sufficient data: {len(filtered)} candles for {symbol} {timeframe}")
                 return filtered, "InfluxDB (fast)"
-        except Exception:
-            pass  # Fall through to cTrader API
+            else:
+                logger.info(f"InfluxDB has insufficient data: {len(filtered)} candles, need {min_required_candles} for {symbol} {timeframe}")
+        except Exception as e:
+            logger.warning(f"InfluxDB fetch failed for {symbol} {timeframe}: {e}")
     
-    # Fallback to cTrader API
+    # Fallback to cTrader API with automatic InfluxDB population
+    logger.info(f"Using cTrader API to fetch and populate InfluxDB for {symbol} {timeframe}")
     candles = await _fetch_from_ctrader_api(symbol, start_date, end_date, timeframe)
-    return candles, "cTrader API"
+    return candles, "cTrader API (auto-populated InfluxDB)"
 
 async def _fetch_current_price(symbol: str, timeframe: str = "30m") -> Dict[str, Any]:
     '''
