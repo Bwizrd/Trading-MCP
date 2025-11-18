@@ -10,6 +10,7 @@ This is the MCP interface for the strategy cartridge system.
 
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import json
@@ -190,6 +191,11 @@ async def list_tools() -> list[Tool]:
                         "type": "object",
                         "description": "Custom parameters for the strategy",
                         "additionalProperties": True
+                    },
+                    "auto_chart": {
+                        "type": "boolean",
+                        "description": "Automatically create chart after backtest (default: true)",
+                        "default": true
                     }
                 },
                 "required": ["strategy_name"],
@@ -432,6 +438,7 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
     stop_loss_pips = arguments.get("stop_loss_pips", 15)
     take_profit_pips = arguments.get("take_profit_pips", 25)
     strategy_parameters = arguments.get("strategy_parameters", {})
+    auto_chart = arguments.get("auto_chart", True)  # Default to True for automatic chart creation
     
     # Handle date range
     if "start_date" in arguments and "end_date" in arguments:
@@ -496,108 +503,52 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         result_text += f"\n📁 **JSON File:** `{json_filepath}`"
         result_text += f"\n📊 **Contains:** Complete backtest data, all {len(results.trades)} trades, and {len(results.market_data)} market candles"
         
-        # Now automatically pass to chart server for chart creation
-        result_text += f"\n\n🎨 **Passing to Chart Server for Visualization...**"
-        
-        try:
-            # Import and call the chart creation function
-            from shared.chart_engine import ChartEngine
-            from shared.models import Candle, Trade, TradeDirection, TradeResult
-            from shared.strategy_interface import BacktestResults as BR, BacktestConfiguration as BC
-            import json
-            from datetime import datetime as dt_parse
+        # Automatically create chart if requested using Modular Chart Engine
+        if auto_chart:
+            result_text += f"\n\n🎨 **Calling Modular Chart Engine Service...**"
             
-            # Initialize chart engine
-            chart_eng = ChartEngine()
-            
-            # Read the JSON file we just created
-            with open(json_filepath, 'r') as f:
-                backtest_data = json.load(f)
-            
-            # Convert JSON back to objects for chart generation
-            candles = []
-            for candle_data in backtest_data['market_data']:
-                candles.append(Candle(
-                    timestamp=dt_parse.fromisoformat(candle_data['timestamp']),
-                    open=candle_data['open'],
-                    high=candle_data['high'],
-                    low=candle_data['low'],
-                    close=candle_data['close'],
-                    volume=candle_data['volume']
-                ))
-            
-            # Convert trades back to objects
-            trades = []
-            for trade_data in backtest_data['trades']:
-                trades.append(Trade(
-                    entry_time=dt_parse.fromisoformat(trade_data['entry_time']),
-                    exit_time=dt_parse.fromisoformat(trade_data['exit_time']) if trade_data['exit_time'] else None,
-                    direction=TradeDirection[trade_data['direction']],
-                    entry_price=trade_data['entry_price'],
-                    exit_price=trade_data['exit_price'],
-                    pips=trade_data['pips'],
-                    result=TradeResult[trade_data['result']]
-                ))
-            
-            # Reconstruct BacktestResults for chart generation
-            config = BC(
-                symbol=backtest_data['configuration']['symbol'],
-                timeframe=backtest_data['configuration']['timeframe'],
-                start_date=backtest_data['configuration']['start_date'],
-                end_date=backtest_data['configuration']['end_date'],
-                initial_balance=backtest_data['configuration']['initial_balance'],
-                risk_per_trade=backtest_data['configuration']['risk_per_trade'],
-                stop_loss_pips=backtest_data['configuration']['stop_loss_pips'],
-                take_profit_pips=backtest_data['configuration']['take_profit_pips']
-            )
-            
-            chart_results = BR(
-                strategy_name=backtest_data['strategy_name'],
-                strategy_version=backtest_data['strategy_version'],
-                configuration=config,
-                trades=trades,
-                total_trades=backtest_data['summary']['total_trades'],
-                winning_trades=backtest_data['summary']['winning_trades'],
-                losing_trades=backtest_data['summary']['losing_trades'],
-                total_pips=backtest_data['summary']['total_pips'],
-                win_rate=backtest_data['summary']['win_rate'],
-                profit_factor=backtest_data['summary']['profit_factor'],
-                average_win=backtest_data['summary']['average_win'],
-                average_loss=backtest_data['summary']['average_loss'],
-                largest_win=backtest_data['summary']['largest_win'],
-                largest_loss=backtest_data['summary']['largest_loss'],
-                max_drawdown=backtest_data['risk_metrics']['max_drawdown'],
-                max_consecutive_losses=backtest_data['risk_metrics']['max_consecutive_losses'],
-                max_consecutive_wins=backtest_data['risk_metrics']['max_consecutive_wins'],
-                start_time=dt_parse.fromisoformat(backtest_data['execution']['start_time']),
-                end_time=dt_parse.fromisoformat(backtest_data['execution']['end_time']),
-                execution_time_seconds=backtest_data['execution']['execution_time_seconds'],
-                data_source=backtest_data['execution']['data_source'],
-                total_candles_processed=backtest_data['execution']['total_candles_processed']
-            )
-            
-            # Generate chart
-            chart_title = f"{strategy_name} Strategy - {symbol}"
-            chart_path = chart_eng.create_comprehensive_chart(
-                candles=candles,
-                backtest_results=chart_results,
-                title=chart_title
-            )
-            
-            result_text += f"\n✅ **Chart Created Successfully!**"
-            result_text += f"\n📈 **Interactive Chart:** `{chart_path}`"
-            result_text += f"\n\n🎨 **Complete Visualization:**"
-            result_text += f"\n• 📊 Candlestick chart with {len(candles)} price bars"
-            result_text += f"\n• 🎯 {len(trades)} trade markers with entry/exit points"
-            result_text += f"\n• 📈 P&L performance visualization"
-            result_text += f"\n• 📊 Cumulative profit/loss curve"
-            result_text += f"\n\n💡 **Open `{chart_path}` in your browser to explore the interactive analysis!**"
-            result_text += f"\n\n🏗️ **Modular Architecture:** Backtest → JSON Export → Chart Generation (All Automatic!)"
-            
-        except Exception as chart_error:
-            logger.warning(f"Automatic chart generation failed: {chart_error}")
-            result_text += f"\n⚠️ **Automatic chart generation failed:** {str(chart_error)}"
-            result_text += f"\n💡 **Manual option:** Use chart server with file: `{json_filename}`"
+            try:
+                # Import the modular chart engine function
+                from mcp_servers.modular_chart_engine import create_chart_from_backtest_json
+                
+                # Call the modular chart engine with the JSON file we just created
+                chart_result = await create_chart_from_backtest_json(json_filename)
+                
+                # Extract the chart information from the modular chart engine response
+                if chart_result and len(chart_result) > 0:
+                    chart_text = chart_result[0].text
+                    # Extract chart path from the response
+                    import re
+                    chart_path_match = re.search(r'Chart File:\*\* `([^`]+)`', chart_text)
+                    if chart_path_match:
+                        chart_path = chart_path_match.group(1)
+                        result_text += f"\n✅ **Chart Created Successfully via Modular Chart Engine!**"
+                        result_text += f"\n📈 **Interactive Chart:** `{chart_path}`"
+                        result_text += f"\n\n🎨 **Complete Visualization:**"
+                        result_text += f"\n• 📊 Candlestick chart with {len(results.market_data)} price bars"
+                        result_text += f"\n• 🎯 {len(results.trades)} trade markers with entry/exit points"
+                        if "MA CROSSOVER" in strategy_name.upper():
+                            result_text += f"\n• 📈 SMA20 (blue) and SMA50 (orange) moving average lines"
+                        result_text += f"\n• 📈 P&L performance visualization"
+                        result_text += f"\n• 📊 Cumulative profit/loss curve"
+                        result_text += f"\n\n💡 **Open `{chart_path}` in your browser to explore the interactive analysis!**"
+                        result_text += f"\n\n🏗️ **Modular Architecture:** Backtest → JSON Export → Modular Chart Engine → Visualization!"
+                    else:
+                        result_text += f"\n✅ **Chart created via Modular Chart Engine**"
+                        result_text += f"\n📊 **Details:** {chart_text[:200]}..."
+                else:
+                    result_text += f"\n⚠️ **Chart engine returned empty result**"
+                    
+            except Exception as chart_error:
+                import traceback
+                error_details = traceback.format_exc()
+                logger.error(f"Modular chart engine call failed: {chart_error}\n{error_details}")
+                result_text += f"\n⚠️ **Modular Chart Engine call failed:** {str(chart_error)}"
+                result_text += f"\n🔧 **Error details:** {error_details[:200]}..."
+                result_text += f"\n💡 **Manual option:** Use modular chart engine directly with file: `{json_filename}`"
+        else:
+            result_text += f"\n\n📊 **Chart creation skipped** (auto_chart=false)"
+            result_text += f"\n💡 **Manual option:** Use modular chart engine with file: `{json_filename}`"
         
         return [TextContent(type="text", text=result_text)]
         

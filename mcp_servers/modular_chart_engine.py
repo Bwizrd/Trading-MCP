@@ -488,22 +488,36 @@ async def create_strategy_chart(input_data: ChartBacktestInput) -> list[TextCont
                 end_date=end_date
             )
             
-            # Convert DataFrame to Candle objects
-            candles = []
-            for _, row in market_data.data.iterrows():
-                candles.append(Candle(
-                    timestamp=row['timestamp'],
-                    open=row['open'],
-                    high=row['high'],
-                    low=row['low'],
-                    close=row['close'],
-                    volume=row['volume']
-                ))
+            # Get candles - market_data.data is already a list of Candle objects
+            candles = market_data.data
             
             # Get indicators data
             indicators = {}
             if hasattr(backtest_results, 'indicators_data'):
                 indicators = backtest_results.indicators_data
+            
+            # Add MA indicators for MA Crossover strategy
+            if "MA Crossover" in strategy.get_name() and len(candles) >= 50:
+                # Calculate SMA20 and SMA50 for charting
+                closes = [candle.close for candle in candles]
+                sma20_values = []
+                sma50_values = []
+                
+                for i in range(len(closes)):
+                    if i >= 19:  # SMA20 needs 20 points
+                        sma20 = sum(closes[i-19:i+1]) / 20
+                        sma20_values.append(sma20)
+                    else:
+                        sma20_values.append(float('nan'))  # Use NaN instead of None
+                        
+                    if i >= 49:  # SMA50 needs 50 points  
+                        sma50 = sum(closes[i-49:i+1]) / 50
+                        sma50_values.append(sma50)
+                    else:
+                        sma50_values.append(float('nan'))  # Use NaN instead of None
+                        
+                indicators['SMA20'] = sma20_values
+                indicators['SMA50'] = sma50_values
             
             # Generate chart title
             chart_title = input_data.chart_title or f"{strategy.get_name()} - {input_data.symbol} {input_data.timeframe}"
@@ -537,6 +551,7 @@ async def create_strategy_chart(input_data: ChartBacktestInput) -> list[TextCont
 
 📈 **Chart Features:**
 - ✅ Candlestick price action with technical indicators
+- ✅ **SMA20 (blue)** and **SMA50 (orange)** moving average lines
 - ✅ Numbered entry/exit markers with color coding  
 - ✅ Trade connection lines (green=win, red=loss)
 - ✅ Volume analysis
