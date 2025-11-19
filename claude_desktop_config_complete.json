@@ -1,28 +1,28 @@
 {
   "mcpServers": {
-    "trading-charts": {
-      "command": "python",
-      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/modular_chart_engine.py"]
-    },
-    "vwap-strategy": {
-      "command": "python", 
-      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/strategies/vwap_strategy/core.py"]
-    },
     "ctrader-connector": {
-      "command": "python",
-      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/ctrader.py"]
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/ctrader.py"
+      ]
     },
     "influxdb-connector": {
-      "command": "python",
-      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/influxdb.py"]
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/influxdb.py"
+      ]
     },
     "universal-backtest-engine": {
-      "command": "python",
-      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/universal_backtest_engine.py"]
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/universal_backtest_engine.py"
+      ]
     },
     "modular-chart-engine": {
-      "command": "python",
-      "args": ["/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/modular_chart_engine.py"]
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/modular_chart_engine.py"
+      ]
     }
   }
 }

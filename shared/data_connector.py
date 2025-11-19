@@ -83,9 +83,23 @@ class DataConnector:
                 if not pair_id:
                     raise Exception(f"Symbol {symbol} not found in symbols list")
                 
-                # Try InfluxDB first (fastest)
-                bars = 100  # Default number of bars
-                influx_url = f"http://localhost:8000/getDataFromDB?pair={pair_id}&timeframe={timeframe}&bars={bars}"
+                # Calculate proper number of bars based on timeframe and date range
+                days_diff = (end_date - start_date).days if isinstance(end_date, datetime) and isinstance(start_date, datetime) else 30
+                
+                # Calculate bars per day based on timeframe
+                bars_per_day = {
+                    "1m": 1440, "5m": 288, "15m": 96, "30m": 48,
+                    "1h": 24, "4h": 6, "1d": 1
+                }
+                estimated_bars = days_diff * bars_per_day.get(timeframe, 48)
+                
+                # Add buffer and limit to reasonable max
+                bars = min(estimated_bars * 2, 10000)
+                logger.info(f"Calculated {bars} bars for {days_diff} days of {timeframe} data")
+                
+                # Try InfluxDB first (fastest) - ensure lowercase timeframe
+                timeframe_lower = timeframe.lower()
+                influx_url = f"http://localhost:8000/getDataFromDB?pair={pair_id}&timeframe={timeframe_lower}&bars={bars}"
                 logger.info(f"Trying InfluxDB: {influx_url}")
                 
                 influx_response = await client.get(influx_url)
@@ -102,7 +116,7 @@ class DataConnector:
                     start_iso = start_date.strftime('%Y-%m-%dT00:00:00.000Z') if isinstance(start_date, datetime) else f"{start_date}T00:00:00.000Z"
                     end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z') if isinstance(end_date, datetime) else f"{end_date}T23:59:59.000Z"
                     
-                    date_url = f"http://localhost:8000/getDataByDates?pair={pair_id}&timeframe={timeframe}&startDate={start_iso}&endDate={end_iso}"
+                    date_url = f"http://localhost:8000/getDataByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
                     logger.info(f"Trying date range: {date_url}")
                     
                     date_response = await client.get(date_url)

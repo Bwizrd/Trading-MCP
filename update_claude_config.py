@@ -53,25 +53,21 @@ def get_trading_mcp_config():
     project_root = Path(__file__).parent.absolute()
     
     return {
-        "trading-charts": {
-            "command": "python",
-            "args": [str(project_root / "mcp_servers" / "charts" / "trading_charts_mcp.py")]
-        },
-        "vwap-strategy": {
-            "command": "python", 
-            "args": [str(project_root / "mcp_servers" / "strategies" / "vwap_strategy" / "core.py")]
-        },
-        "ma-crossover-strategy": {
-            "command": "python",
-            "args": [str(project_root / "mcp_servers" / "strategies" / "ma_crossover" / "core.py")]
-        },
         "ctrader-connector": {
-            "command": "python", 
+            "command": "python",
             "args": [str(project_root / "mcp_servers" / "data_connectors" / "ctrader.py")]
         },
         "influxdb-connector": {
-            "command": "python", 
+            "command": "python",
             "args": [str(project_root / "mcp_servers" / "data_connectors" / "influxdb.py")]
+        },
+        "universal-backtest-engine": {
+            "command": "python",
+            "args": [str(project_root / "mcp_servers" / "universal_backtest_engine.py")]
+        },
+        "modular-chart-engine": {
+            "command": "python",
+            "args": [str(project_root / "mcp_servers" / "modular_chart_engine.py")]
         }
     }
 
@@ -80,11 +76,10 @@ def verify_mcp_files():
     project_root = Path(__file__).parent.absolute()
     
     required_files = [
-        "mcp_servers/charts/trading_charts_mcp.py",
-        "mcp_servers/strategies/vwap_strategy/core.py",
-        "mcp_servers/strategies/ma_crossover/core.py",
         "mcp_servers/data_connectors/ctrader.py",
-        "mcp_servers/data_connectors/influxdb.py"
+        "mcp_servers/data_connectors/influxdb.py",
+        "mcp_servers/universal_backtest_engine.py",
+        "mcp_servers/modular_chart_engine.py"
     ]
     
     missing_files = []

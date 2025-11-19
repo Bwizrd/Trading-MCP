@@ -157,10 +157,9 @@ async def list_tools() -> list[Tool]:
                     },
                     "days_back": {
                         "type": "integer",
-                        "description": "Number of days back from today (alternative to start_date/end_date)",
+                        "description": "Number of days to look back for data (default: 365, max: 18250 for 50 years)",
                         "minimum": 1,
-                        "maximum": 365,
-                        "default": 7
+                        "maximum": 18250
                     },
                     "initial_balance": {
                         "type": "number",
@@ -227,8 +226,10 @@ async def list_tools() -> list[Tool]:
                     },
                     "days_back": {
                         "type": "integer",
-                        "description": "Number of days back from today",
-                        "default": 7
+                        "description": "Number of days back from today (default: 365, max: 18250 for 50 years)",
+                        "default": 365,
+                        "minimum": 1,
+                        "maximum": 18250
                     },
                     "initial_balance": {
                         "type": "number",
@@ -445,7 +446,7 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         start_date = arguments["start_date"]
         end_date = arguments["end_date"]
     else:
-        days_back = arguments.get("days_back", 7)
+        days_back = arguments.get("days_back", 365)
         end_dt = datetime.now()
         start_dt = end_dt - timedelta(days=days_back)
         start_date = start_dt.strftime('%Y-%m-%d')
