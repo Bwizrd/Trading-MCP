@@ -462,27 +462,165 @@ class ChartEngine:
         return monthly_pnl
     
     def _save_chart(self, fig, title: str, backtest_results: BacktestResults) -> str:
-        """Save chart to HTML file."""
-        # Generate filename
+        """Save chart to HTML file with trades table."""
+        # Generate filename (browser-friendly, no spaces or special chars)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         symbol = getattr(backtest_results, 'symbol', 'UNKNOWN')
-        filename = f"{sanitize_symbol(symbol)}_{sanitize_symbol(title)}_{timestamp}.html"
+        strategy_name = getattr(backtest_results, 'strategy_name', title)
+        
+        # Create clean filename
+        clean_symbol = sanitize_symbol(symbol)
+        clean_strategy = strategy_name.replace(' ', '_').replace('-', '_').upper()
+        filename = f"{clean_symbol}_{clean_strategy}_{timestamp}.html"
         
         chart_path = self.output_dir / filename
         
-        # Save as HTML
-        fig.write_html(
-            str(chart_path),
-            include_plotlyjs='cdn',  # Use CDN for smaller file size
-            config={
-                'displayModeBar': True,
-                'displaylogo': False,
-                'modeBarButtonsToRemove': ['pan2d', 'lasso2d']
-            }
-        )
+        # Generate trades table HTML
+        trades_table_html = self._generate_trades_table(backtest_results.trades)
+        
+        # Create the full HTML with chart and trades table
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{title}</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }}
+        .chart-container {{
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }}
+        .trades-table-container {{
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }}
+        .trades-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }}
+        .trades-table th, .trades-table td {{
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }}
+        .trades-table th {{
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
+        }}
+        .trades-table tr:nth-child(even) {{
+            background-color: #f2f2f2;
+        }}
+        .trades-table tr:hover {{
+            background-color: #e8f5e8;
+        }}
+        .win {{ color: #4CAF50; font-weight: bold; }}
+        .loss {{ color: #f44336; font-weight: bold; }}
+        .breakeven {{ color: #FF9800; font-weight: bold; }}
+        .buy {{ color: #2196F3; }}
+        .sell {{ color: #FF5722; }}
+    </style>
+</head>
+<body>
+    <div class="chart-container">
+        <div id="chart-div" style="width:100%;height:800px;"></div>
+    </div>
+    <div class="trades-table-container">
+        <h2>📊 Trades Summary</h2>
+        {trades_table_html}
+    </div>
+    <script>
+        var plotlyData = {fig.to_json()};
+        Plotly.newPlot('chart-div', plotlyData.data, plotlyData.layout, {{responsive: true}});
+    </script>
+</body>
+</html>
+        """
+        
+        # Write the complete HTML
+        with open(chart_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
         
         logger.info(f"Chart saved: {chart_path}")
         return str(chart_path)
+    
+    def _generate_trades_table(self, trades: List) -> str:
+        """Generate HTML table for trades."""
+        if not trades:
+            return "<p>No trades executed.</p>"
+        
+        table_rows = []
+        for i, trade in enumerate(trades, 1):
+            # Calculate duration
+            if hasattr(trade, 'entry_time') and hasattr(trade, 'exit_time'):
+                duration = trade.exit_time - trade.entry_time
+                duration_str = str(duration).split('.')[0]  # Remove microseconds
+            else:
+                duration_str = "N/A"
+            
+            # Determine result class for styling
+            result_class = "win" if trade.pips > 0 else "loss" if trade.pips < 0 else "breakeven"
+            direction_class = "buy" if trade.direction.value == "BUY" else "sell"
+            
+            # Format exit reason
+            exit_reason = getattr(trade, 'exit_reason', 'Unknown')
+            if hasattr(trade, 'result'):
+                if trade.result.name == 'WIN':
+                    exit_reason = 'Take Profit'
+                elif trade.result.name == 'LOSS':
+                    exit_reason = 'Stop Loss'
+            
+            table_rows.append(f"""
+                <tr>
+                    <td>{i}</td>
+                    <td>{getattr(trade, 'entry_time', 'N/A')}</td>
+                    <td class="{direction_class}">{trade.direction.value}</td>
+                    <td>{trade.entry_price:.5f}</td>
+                    <td>{getattr(trade, 'exit_time', 'N/A')}</td>
+                    <td>{trade.exit_price:.5f}</td>
+                    <td>{duration_str}</td>
+                    <td class="{result_class}">{trade.pips:+.1f}</td>
+                    <td>{exit_reason}</td>
+                </tr>
+            """)
+        
+        return f"""
+        <table class="trades-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Entry Time</th>
+                    <th>Direction</th>
+                    <th>Entry Price</th>
+                    <th>Exit Time</th>
+                    <th>Exit Price</th>
+                    <th>Duration</th>
+                    <th>Pips</th>
+                    <th>Exit Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {"".join(table_rows)}
+            </tbody>
+        </table>
+        <p><strong>Total Trades:</strong> {len(trades)} | 
+           <strong>Winners:</strong> <span class="win">{len([t for t in trades if t.pips > 0])}</span> | 
+           <strong>Losers:</strong> <span class="loss">{len([t for t in trades if t.pips < 0])}</span> |
+           <strong>Total P&L:</strong> <span class="{'win' if sum(t.pips for t in trades) > 0 else 'loss'}">{sum(t.pips for t in trades):+.1f} pips</span>
+        </p>
+        """
 
 
 # Utility functions for backward compatibility
