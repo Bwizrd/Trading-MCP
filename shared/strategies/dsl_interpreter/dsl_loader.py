@@ -328,7 +328,12 @@ def integrate_dsl_with_strategy_registry(strategy_registry, dsl_loader: DSLLoade
                     return self._dsl_strategy.requires_indicators()
                 
                 def generate_signal(self, context):
-                    return self._dsl_strategy.generate_signal(context)
+                    signal = self._dsl_strategy.generate_signal(context)
+                    # DEBUG: Log wrapper signal forwarding
+                    if signal:
+                        with open('/tmp/dsl_debug.log', 'a') as f:
+                            f.write(f"WRAPPER FORWARDING SIGNAL: {signal.direction} @ {signal.price}\n")
+                    return signal
                 
                 def initialize(self, parameters: Dict[str, Any] = None) -> None:
                     super().initialize(parameters)

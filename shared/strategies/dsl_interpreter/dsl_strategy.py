@@ -128,6 +128,51 @@ class DSLStrategy(TradingStrategy):
         """DSL strategies don't require indicators by default."""
         return []
     
+    def get_indicator_series(self, candles: List) -> Dict[str, List[float]]:
+        """
+        Calculate full indicator series for charting.
+        Returns time series data for all configured indicators.
+        """
+        import pandas as pd
+        import ta
+        
+        if not candles or not hasattr(self, 'dsl_config') or 'indicators' not in self.dsl_config:
+            return {}
+        
+        # Convert candles to DataFrame
+        df = pd.DataFrame([{
+            'timestamp': candle.timestamp,
+            'open': candle.open,
+            'high': candle.high, 
+            'low': candle.low,
+            'close': candle.close,
+            'volume': candle.volume
+        } for candle in candles])
+        
+        indicator_series = {}
+        
+        # Calculate full series for each indicator
+        for indicator in self.dsl_config['indicators']:
+            ind_type = indicator['type']
+            period = indicator['period']
+            alias = indicator['alias']
+            
+            try:
+                if ind_type == 'SMA' and len(df) >= period:
+                    sma_series = ta.trend.sma_indicator(df['close'], window=period)
+                    indicator_series[f"{alias}"] = sma_series.fillna(0).tolist()
+                elif ind_type == 'EMA' and len(df) >= period:
+                    ema_series = ta.trend.ema_indicator(df['close'], window=period)
+                    indicator_series[f"{alias}"] = ema_series.fillna(0).tolist()
+                elif ind_type == 'RSI' and len(df) >= period:
+                    rsi_series = ta.momentum.rsi(df['close'], window=period)
+                    indicator_series[f"{alias}"] = rsi_series.fillna(0).tolist()
+            except Exception as e:
+                import logging
+                logging.warning(f"Error calculating {alias} series ({ind_type}): {e}")
+        
+        return indicator_series
+    
     def generate_signal(self, context: StrategyContext) -> Optional[Signal]:
         """
         Generate trading signal based on DSL configuration.
@@ -160,6 +205,10 @@ class DSLStrategy(TradingStrategy):
         candle = context.current_candle
         current_date = candle.timestamp.date()
         
+        # DEBUG: Write to file to confirm this code is running
+        with open('/tmp/dsl_debug.log', 'a') as f:
+            f.write(f"_generate_indicator_signal called at {candle.timestamp}, has_indicators={bool(self.indicator_values)}\n")
+        
         # Check daily trade limit
         if self.last_trade_date == current_date and self.daily_trade_count >= self.max_daily_trades:
             return None
@@ -173,7 +222,12 @@ class DSLStrategy(TradingStrategy):
             return None
             
         # Evaluate indicator conditions (includes crossover detection)
-        signal_direction = self._evaluate_conditions(0.0, 0.0)  # Not used for indicators
+        signal_direction = self._evaluate_indicator_conditions()
+        
+        # DEBUG: Log signal detection
+        if signal_direction:
+            with open('/tmp/dsl_debug.log', 'a') as f:
+                f.write(f"SIGNAL DETECTED: {signal_direction} at {candle.timestamp}\n")
         
         if signal_direction is None:
             return None
@@ -182,7 +236,7 @@ class DSLStrategy(TradingStrategy):
         strength = self._calculate_indicator_signal_strength()
         
         # Create signal
-        return Signal(
+        signal = Signal(
             direction=signal_direction,
             strength=strength,
             confidence=0.8,  # High confidence for crossover signals
@@ -194,6 +248,23 @@ class DSLStrategy(TradingStrategy):
                 "indicators": dict(self.indicator_values)
             }
         )
+        
+        # DEBUG: Log signal creation
+        with open('/tmp/dsl_debug.log', 'a') as f:
+            f.write(f"SIGNAL CREATED: {signal.direction} @ {signal.price} at {signal.timestamp}\n")
+        
+        # Update trade tracking
+        if self.last_trade_date != current_date:
+            self.daily_trade_count = 0
+            self.last_trade_date = current_date
+        
+        self.daily_trade_count += 1
+        
+        # DEBUG: Log signal return
+        with open('/tmp/dsl_debug.log', 'a') as f:
+            f.write(f"RETURNING SIGNAL: {signal}\n")
+        
+        return signal
         
     def _generate_time_based_signal(self, context: StrategyContext) -> Optional[Signal]:
         """Generate signal for time-based strategies (original logic)."""

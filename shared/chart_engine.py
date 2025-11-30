@@ -320,7 +320,7 @@ class ChartEngine:
                     name='BUY Signals',
                     marker=dict(
                         symbol='triangle-up',
-                        size=12,
+                        size=18,
                         color=self.colors['buy_signal']
                     ),
                     text=buy_text,
@@ -339,7 +339,7 @@ class ChartEngine:
                     name='SELL Signals',
                     marker=dict(
                         symbol='triangle-down',
-                        size=12,
+                        size=18,
                         color=self.colors['sell_signal']
                     ),
                     text=sell_text,
@@ -440,13 +440,16 @@ class ChartEngine:
         
         fig.add_annotation(
             xref="paper", yref="paper",
-            x=0.02, y=0.98,
+            x=0.98, y=0.98,  # Top-right corner
+            xanchor="right",
+            yanchor="top",
             text=summary_text,
             showarrow=False,
-            font=dict(size=12),
-            bgcolor="rgba(255,255,255,0.8)",
-            bordercolor="gray",
-            borderwidth=1
+            font=dict(size=10),
+            bgcolor="rgba(255,255,255,0.95)",
+            bordercolor="#4CAF50",
+            borderwidth=2,
+            borderpad=6
         )
     
     def _calculate_monthly_performance(self, trades: List[Trade]) -> Dict[str, float]:
@@ -465,8 +468,10 @@ class ChartEngine:
         """Save chart to HTML file with trades table."""
         # Generate filename (browser-friendly, no spaces or special chars)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        symbol = getattr(backtest_results, 'symbol', 'UNKNOWN')
-        strategy_name = getattr(backtest_results, 'strategy_name', title)
+        
+        # Get symbol and strategy name from backtest results
+        symbol = backtest_results.configuration.symbol if hasattr(backtest_results, 'configuration') else 'UNKNOWN'
+        strategy_name = backtest_results.strategy_name if hasattr(backtest_results, 'strategy_name') else title
         
         # Create clean filename
         clean_symbol = sanitize_symbol(symbol)
@@ -475,40 +480,31 @@ class ChartEngine:
         
         chart_path = self.output_dir / filename
         
-        # Generate trades table HTML
+        # Use Plotly's write_html which works correctly
+        fig.write_html(
+            str(chart_path),
+            include_plotlyjs='cdn',
+            config={'responsive': True}
+        )
+        
+        # Now append the trades table to the HTML
         trades_table_html = self._generate_trades_table(backtest_results.trades)
         
-        # Create the full HTML with chart and trades table
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>{title}</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        # Read the generated HTML
+        with open(chart_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        # Insert trades table before closing body tag
+        trades_section = f"""
+    <div style="margin: 60px 20px 20px 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 20px;">
+        <h2>📊 Trade History & Performance</h2>
+        {trades_table_html}
+    </div>
     <style>
-        body {{
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }}
-        .chart-container {{
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 20px;
-        }}
-        .trades-table-container {{
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-        }}
         .trades-table {{
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            margin-top: 20px;
         }}
         .trades-table th, .trades-table td {{
             border: 1px solid #ddd;
@@ -519,6 +515,8 @@ class ChartEngine:
             background-color: #4CAF50;
             color: white;
             font-weight: bold;
+            text-align: center;
+            padding: 12px 8px;
         }}
         .trades-table tr:nth-child(even) {{
             background-color: #f2f2f2;
@@ -532,24 +530,11 @@ class ChartEngine:
         .buy {{ color: #2196F3; }}
         .sell {{ color: #FF5722; }}
     </style>
-</head>
-<body>
-    <div class="chart-container">
-        <div id="chart-div" style="width:100%;height:800px;"></div>
-    </div>
-    <div class="trades-table-container">
-        <h2>📊 Trades Summary</h2>
-        {trades_table_html}
-    </div>
-    <script>
-        var plotlyData = {fig.to_json()};
-        Plotly.newPlot('chart-div', plotlyData.data, plotlyData.layout, {{responsive: true}});
-    </script>
-</body>
-</html>
-        """
+"""
         
-        # Write the complete HTML
+        html_content = html_content.replace('</body>', f'{trades_section}</body>')
+        
+        # Write back the modified HTML
         with open(chart_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
         

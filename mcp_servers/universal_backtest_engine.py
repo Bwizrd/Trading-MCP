@@ -127,7 +127,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="run_strategy_backtest",
-            description="Run a backtest using any strategy cartridge with configurable parameters",
+            description="[PRIMARY BACKTEST TOOL] Execute a complete strategy backtest with performance analysis. Returns: total trades, win rate, profit/loss in pips, trade history, performance metrics, and an interactive HTML chart. IMPORTANT: Always show the user the complete file path to the generated chart so they can open it in their browser. The chart path will be in a code block - you must include this in your response to the user.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -157,9 +157,10 @@ async def list_tools() -> list[Tool]:
                     },
                     "days_back": {
                         "type": "integer",
-                        "description": "Number of days to look back for data (default: 365, max: 18250 for 50 years)",
+                        "description": "Number of days to look back from today (e.g., 3 for last 3 days, 7 for last week, 30 for last month)",
                         "minimum": 1,
-                        "maximum": 18250
+                        "maximum": 18250,
+                        "default": 7
                     },
                     "initial_balance": {
                         "type": "number",
@@ -194,7 +195,7 @@ async def list_tools() -> list[Tool]:
                     "auto_chart": {
                         "type": "boolean",
                         "description": "Automatically create chart after backtest (default: true)",
-                        "default": true
+                        "default": True
                     }
                 },
                 "required": ["strategy_name"],
@@ -332,6 +333,33 @@ async def list_tools() -> list[Tool]:
                 "required": ["dsl_config"],
                 "additionalProperties": False
             }
+        ),
+        Tool(
+            name="create_price_chart",
+            description="Create a simple candlestick chart of market data without running a backtest. Just fetches OHLCV data and creates an interactive chart.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Trading symbol (e.g., 'EURUSD', 'GBPUSD')",
+                        "default": "EURUSD"
+                    },
+                    "timeframe": {
+                        "type": "string",
+                        "description": "Timeframe for the data (e.g., '1m', '5m', '15m', '30m', '1h', '4h', '1d')",
+                        "default": "15m"
+                    },
+                    "days_back": {
+                        "type": "integer",
+                        "description": "Number of days to look back from today",
+                        "minimum": 1,
+                        "maximum": 90,
+                        "default": 7
+                    }
+                },
+                "additionalProperties": False
+            }
         )
     ]
 
@@ -360,6 +388,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 
             elif name == "create_strategy_from_dsl":
                 return await handle_create_dsl_strategy(registry, arguments)
+                
+            elif name == "create_price_chart":
+                return await handle_create_price_chart(connector, arguments)
                 
             else:
                 return [TextContent(
@@ -446,7 +477,7 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         start_date = arguments["start_date"]
         end_date = arguments["end_date"]
     else:
-        days_back = arguments.get("days_back", 365)
+        days_back = arguments.get("days_back", 7)
         end_dt = datetime.now()
         start_dt = end_dt - timedelta(days=days_back)
         start_date = start_dt.strftime('%Y-%m-%d')
@@ -492,17 +523,13 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         with open(json_filepath, 'w') as f:
             json.dump(results_json, f, indent=2)
         
-        # Format backtest results
+        # Format backtest results (human-readable summary)
         result_text = format_backtest_results(results)
         
-        # Add the full JSON data to the response for Claude Desktop
-        result_text += f"\n\n📊 **COMPLETE BACKTEST DATA (JSON):**"
-        result_text += f"\n```json\n{json.dumps(results_json, indent=2)}\n```"
-        
-        # Add modular workflow info
-        result_text += f"\n\n💾 **Backtest Results Exported (Modular Architecture):**"
-        result_text += f"\n📁 **JSON File:** `{json_filepath}`"
-        result_text += f"\n📊 **Contains:** Complete backtest data, all {len(results.trades)} trades, and {len(results.market_data)} market candles"
+        # Add file export info (without dumping massive JSON)
+        result_text += f"\n\n�  **Results Saved:**"
+        result_text += f"\n📁 File: `{json_filepath}`"
+        result_text += f"\n📊 Contains: {len(results.trades)} trades + {len(results.market_data)} candles"
         
         # Automatically create chart if requested using Modular Chart Engine
         if auto_chart:
@@ -523,7 +550,12 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
                     chart_path_match = re.search(r'Chart File:\*\* `([^`]+)`', chart_text)
                     if chart_path_match:
                         chart_path = chart_path_match.group(1)
-                        result_text += f"\n✅ **Chart Created Successfully via Modular Chart Engine!**"
+                        
+                        # Extract filename for clearer display
+                        import os
+                        chart_filename = os.path.basename(chart_path)
+                        
+                        result_text += f"\n✅ **Chart Created Successfully!**"
                         result_text += f"\n📈 **Interactive Chart:** `{chart_path}`"
                         result_text += f"\n\n🎨 **Complete Visualization:**"
                         result_text += f"\n• 📊 Candlestick chart with {len(results.market_data)} price bars"
@@ -532,8 +564,8 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
                             result_text += f"\n• 📈 SMA20 (blue) and SMA50 (orange) moving average lines"
                         result_text += f"\n• 📈 P&L performance visualization"
                         result_text += f"\n• 📊 Cumulative profit/loss curve"
-                        result_text += f"\n\n💡 **Open `{chart_path}` in your browser to explore the interactive analysis!**"
-                        result_text += f"\n\n🏗️ **Modular Architecture:** Backtest → JSON Export → Modular Chart Engine → Visualization!"
+                        result_text += f"\n\n🌐 **Chart Location:** `{chart_path}`"
+                        result_text += f"\n💡 **To view:** Copy the path above and open in your browser, or navigate to the file in Finder and double-click to open"
                     else:
                         result_text += f"\n✅ **Chart created via Modular Chart Engine**"
                         result_text += f"\n📊 **Details:** {chart_text[:200]}..."
@@ -747,12 +779,14 @@ async def handle_create_dsl_strategy(registry: StrategyRegistry, arguments: dict
 
 def format_backtest_results(results) -> str:
     """Format backtest results for display."""
-    result_text = f"📊 **Backtest Results: {results.strategy_name}**\n\n"
+    result_text = f"✅ **BACKTEST COMPLETE: {results.strategy_name}**\n\n"
     
-    result_text += f"**Strategy:** {results.strategy_name} (v{results.strategy_version})\n"
+    result_text += f"**Strategy Executed:** {results.strategy_name} (v{results.strategy_version})\n"
     result_text += f"**Symbol:** {results.configuration.symbol}\n"
     result_text += f"**Timeframe:** {results.configuration.timeframe}\n"
     result_text += f"**Period:** {results.configuration.start_date} to {results.configuration.end_date}\n"
+    result_text += f"**Candles Analyzed:** {len(results.market_data)}\n"
+    result_text += f"**Signals Generated:** {results.total_trades}\n"
     result_text += f"**Data Source:** {results.data_source}\n\n"
     
     result_text += "## 💰 **Performance**\n"
@@ -789,6 +823,89 @@ def format_detailed_stats(results) -> str:
     stats_text += f"• **Max Consecutive Losses:** {results.max_consecutive_losses}\n"
     
     return stats_text
+
+
+async def handle_create_price_chart(connector: DataConnector, arguments: dict) -> list[TextContent]:
+    """Handle creating a simple price chart without backtest."""
+    symbol = arguments.get("symbol", "EURUSD")
+    timeframe = arguments.get("timeframe", "15m")
+    days_back = arguments.get("days_back", 7)
+    
+    try:
+        # Calculate date range
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=days_back)
+        
+        # Fetch market data
+        logger.info(f"Fetching {symbol} {timeframe} data for {days_back} days")
+        response = await connector.get_market_data(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_date=start_dt,
+            end_date=end_dt
+        )
+        
+        if not response.data or len(response.data) == 0:
+            return [TextContent(
+                type="text",
+                text=f"❌ No data available for {symbol} {timeframe}"
+            )]
+        
+        candles = response.data
+        logger.info(f"Fetched {len(candles)} candles")
+        
+        # Create simple chart using Plotly directly
+        import plotly.graph_objects as go
+        from pathlib import Path
+        
+        # Create candlestick chart
+        fig = go.Figure(data=[go.Candlestick(
+            x=[c.timestamp for c in candles],
+            open=[c.open for c in candles],
+            high=[c.high for c in candles],
+            low=[c.low for c in candles],
+            close=[c.close for c in candles],
+            name=symbol
+        )])
+        
+        # Update layout
+        fig.update_layout(
+            title=f"{symbol} {timeframe} - Last {days_back} Days",
+            xaxis_title="Time",
+            yaxis_title="Price",
+            template="plotly_white",
+            height=600,
+            xaxis_rangeslider_visible=False
+        )
+        
+        # Save chart
+        project_root = Path(__file__).parent.parent
+        charts_dir = project_root / "data" / "charts"
+        charts_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{symbol}_{timeframe}_{timestamp}.html"
+        chart_path = charts_dir / filename
+        
+        fig.write_html(str(chart_path))
+        
+        result_text = f"📊 **Price Chart Created!**\n\n"
+        result_text += f"**Symbol:** {symbol}\n"
+        result_text += f"**Timeframe:** {timeframe}\n"
+        result_text += f"**Period:** {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}\n"
+        result_text += f"**Candles:** {len(candles)}\n"
+        result_text += f"**Data Source:** {response.source}\n\n"
+        result_text += f"📁 **Chart saved to:**\n{chart_path}\n\n"
+        result_text += f"💡 **To open:** Use Finder to navigate to the path above, or open in browser"
+        
+        return [TextContent(type="text", text=result_text)]
+        
+    except Exception as e:
+        logger.error(f"Price chart creation failed: {e}")
+        return [TextContent(
+            type="text",
+            text=f"❌ Chart creation failed: {str(e)}"
+        )]
 
 
 async def main():

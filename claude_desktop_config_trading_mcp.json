@@ -1,0 +1,38 @@
+{
+  "mcpServers": {
+    "ctrader-connector": {
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/ctrader.py"
+      ]
+    },
+    "influxdb-connector": {
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/influxdb.py"
+      ]
+    },
+    "influxdb": {
+      "command": "/Users/paul/.nvm/versions/node/v22.11.0/bin/influxdb-mcp-server",
+      "args": [],
+      "env": {
+        "INFLUXDB_TOKEN": "VNC3xnPXodbpC3yJ_riWrBpN0lCA0k-mPiFsocR-Wu9K8kFHQ3JUp32bOCQaNOdjVI6zfGuxoZpgGZl-ZiXP-Q==",
+        "INFLUXDB_URL": "http://localhost:8086",
+        "INFLUXDB_ORG": "PansHouse",
+        "INFLUXDB_DATABASE": "market_data"
+      }
+    },
+    "universal-backtest-engine": {
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/universal_backtest_engine.py"
+      ]
+    },
+    "modular-chart-engine": {
+      "command": "/Users/paul/Sites/PythonProjects/Trading-MCP/.venv/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/modular_chart_engine.py"
+      ]
+    }
+  }
+}

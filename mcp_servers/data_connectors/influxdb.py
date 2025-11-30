@@ -31,9 +31,11 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from mcp.server.fastmcp import FastMCP
 from shared.models import BacktestInput, TradeDirection, TradeResult, ResponseFormat
 from shared.utils import (get_config, calculate_pips, format_timestamp,
-                         DEFAULT_STOP_LOSS_PIPS, DEFAULT_TAKE_PROFIT_PIPS, 
+                         DEFAULT_STOP_LOSS_PIPS, DEFAULT_TAKE_PROFIT_PIPS,
                          DEFAULT_SIGNAL_TIME, CHARACTER_LIMIT)
 from config.settings import CTRADER_API_CONFIG
+from influxdb_client import InfluxDBClient
+from influxdb_client.client.query_api import QueryApi
 
 # Initialize the MCP server
 mcp = FastMCP("influxdb_data_connector")
@@ -46,6 +48,16 @@ config = get_config()
 API_BASE_URL = config["ctrader_api_url"]
 API_USERNAME = config["ctrader_api_username"]
 API_PASSWORD = config["ctrader_api_password"]
+
+# InfluxDB Configuration
+INFLUXDB_URL = "http://localhost:8086"
+INFLUXDB_TOKEN = "VNC3xnPXodbpC3yJ_riWrBpN0lCA0k-mPiFsocR-Wu9K8kFHQ3JUp32bOCQaNOdjVI6zfGuxoZpgGZl-ZiXP-Q=="
+INFLUXDB_ORG = "PansHouse"
+INFLUXDB_BUCKET = "market_data"
+
+# Initialize InfluxDB client
+influxdb_client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
+query_api = influxdb_client.query_api()
 
 # Symbol ID mapping (from your API)
 SYMBOL_IDS = {
@@ -76,6 +88,8 @@ SYMBOL_IDS = {
     "GER40": 200,
     "UK100": 217,
     "US30": 219,
+    "NAS100": 205,  # NAS100_SB - US Tech 100 Index
+    "US500": 220,   # US500_SB - US 500 Index
 }
 
 # Timeframe mapping
@@ -1079,6 +1093,705 @@ async def fetch_market_data(params: DataFetchInput) -> str:
         
         return result
         
+    except Exception as e:
+        return _handle_error(e)
+
+# Data availability and management tools
+class DataAvailabilityInput(BaseModel):
+    '''Input for checking data availability.'''
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    symbol: str = Field(
+        ...,
+        description="Trading symbol (e.g., 'EURUSD', 'GBPUSD')"
+    )
+    timeframe: str = Field(
+        ...,
+        description="Timeframe (e.g., '15m', '30m', '1h')"
+    )
+    days: int = Field(
+        default=7,
+        description="Number of days to check (1-90)",
+        ge=1,
+        le=90
+    )
+
+@mcp.tool(
+    name="check_influxdb_data_coverage",
+    annotations={
+        "title": "Check InfluxDB Data Coverage",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
+async def check_influxdb_data_coverage(params: DataAvailabilityInput) -> str:
+    '''
+    Check if InfluxDB has complete data for the requested period.
+
+    This tool answers questions like:
+    - "Is EURUSD 15m data available for the past week?"
+    - "What data is missing in InfluxDB?"
+    - "Is the database up to date?"
+
+    Args:
+        params: Symbol, timeframe, and number of days to check
+
+    Returns:
+        str: Report on data availability with gaps identified
+    '''
+    try:
+        # Calculate expected bars based on timeframe
+        bars_per_day = {
+            "1m": 1440, "5m": 288, "15m": 96, "30m": 48,
+            "1h": 24, "4h": 6, "1d": 1
+        }
+
+        expected_bars_per_day = bars_per_day.get(params.timeframe, 48)
+
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=params.days)
+
+        # Count trading days (exclude weekends)
+        trading_days = 0
+        current = start_date
+        while current <= end_date:
+            # Forex markets are closed on Saturday (5) and Sunday (6)
+            if current.weekday() < 5:  # Monday=0, Friday=4
+                trading_days += 1
+            current += timedelta(days=1)
+
+        # Calculate expected bars based on trading days only
+        expected_total_bars = trading_days * expected_bars_per_day
+
+        # Query InfluxDB DIRECTLY (no cTrader fallback) to check actual DB contents
+        symbol_id = SYMBOL_IDS.get(params.symbol.upper())
+        if not symbol_id:
+            return f"❌ Unknown symbol: {params.symbol}. Available symbols: {', '.join(SYMBOL_IDS.keys())}"
+
+        # Query InfluxDB directly via /getDataFromDB endpoint
+        influx_data = None
+        try:
+            data = await _make_api_request(
+                "/getDataFromDB",
+                method="GET",
+                params={
+                    "pair": symbol_id,
+                    "timeframe": params.timeframe,
+                    "bars": expected_total_bars
+                },
+                require_auth=False
+            )
+
+            if data and "data" in data and data["data"]:
+                influx_data = []
+                for item in data["data"]:
+                    dt = datetime.fromtimestamp(item["timestamp"] / 1000)
+                    influx_data.append({
+                        "date": dt.strftime('%Y-%m-%d'),
+                        "timestamp": item["timestamp"],
+                        "open": float(item["open"]),
+                        "high": float(item["high"]),
+                        "low": float(item["low"]),
+                        "close": float(item["close"]),
+                        "volume": int(item.get("volume", 0))
+                    })
+        except Exception as e:
+            logger.warning(f"InfluxDB query failed: {e}")
+            influx_data = []
+
+        actual_bars = len(influx_data) if influx_data else 0
+        coverage_pct = (actual_bars / expected_total_bars * 100) if expected_total_bars > 0 else 0
+
+        # Determine status
+        is_complete = coverage_pct >= 95  # Consider 95%+ as complete
+        missing_bars = max(0, expected_total_bars - actual_bars)
+
+        # Format response
+        result = f"# 📊 InfluxDB Data Coverage Report\n\n"
+        result += f"**Symbol:** {params.symbol}\n"
+        result += f"**Timeframe:** {params.timeframe}\n"
+        result += f"**Period:** Last {params.days} calendar days ({trading_days} trading days)\n"
+        result += f"**Date Range:** {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}\n\n"
+
+        result += f"## Coverage Summary\n\n"
+        result += f"- **Expected Bars:** {expected_total_bars:,} ({trading_days} trading days × {expected_bars_per_day} bars/day)\n"
+        result += f"- **Available Bars:** {actual_bars:,}\n"
+        result += f"- **Coverage:** {coverage_pct:.1f}%\n"
+        result += f"- **Missing Bars:** {missing_bars:,}\n"
+        result += f"- **Status:** {'✅ Complete' if is_complete else '⚠️ Incomplete'}\n\n"
+
+        if influx_data and len(influx_data) > 0:
+            first_candle = datetime.fromtimestamp(influx_data[0]['timestamp'] / 1000)
+            last_candle = datetime.fromtimestamp(influx_data[-1]['timestamp'] / 1000)
+            result += f"## Data Range\n\n"
+            result += f"- **First Candle:** {first_candle.strftime('%Y-%m-%d %H:%M')}\n"
+            result += f"- **Last Candle:** {last_candle.strftime('%Y-%m-%d %H:%M')}\n"
+
+            # Check if data is up to date (within last 2 hours)
+            time_since_last = datetime.now() - last_candle
+            is_up_to_date = time_since_last.total_seconds() < 7200  # 2 hours
+            result += f"- **Up to Date:** {'✅ Yes' if is_up_to_date else f'⚠️ No (last update: {time_since_last.seconds // 3600}h {(time_since_last.seconds % 3600) // 60}m ago)'}\n\n"
+
+        if not is_complete:
+            result += f"## 💡 Recommendation\n\n"
+            result += f"InfluxDB has incomplete data ({coverage_pct:.1f}% coverage).\n"
+            result += f"Missing approximately {missing_bars:,} bars.\n\n"
+            result += f"**Would you like me to fetch the missing data from cTrader API?**\n"
+            result += f"I can populate InfluxDB with the complete dataset for faster future queries.\n"
+
+        return result
+
+    except Exception as e:
+        return _handle_error(e)
+
+class DataPopulationInput(BaseModel):
+    '''Input for populating InfluxDB with missing data.'''
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    symbol: str = Field(
+        ...,
+        description="Trading symbol (e.g., 'EURUSD', 'GBPUSD')"
+    )
+    timeframe: str = Field(
+        ...,
+        description="Timeframe (e.g., '15m', '30m', '1h')"
+    )
+    days: int = Field(
+        default=7,
+        description="Number of days to populate (1-90)",
+        ge=1,
+        le=90
+    )
+
+@mcp.tool(
+    name="populate_influxdb_from_ctrader",
+    annotations={
+        "title": "Populate InfluxDB from cTrader API",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True
+    }
+)
+async def populate_influxdb_from_ctrader(params: DataPopulationInput) -> str:
+    '''
+    Fetch data from cTrader API and populate InfluxDB.
+
+    This tool is called when check_influxdb_data_coverage indicates missing data.
+    It fetches complete historical data from cTrader and stores it in InfluxDB.
+
+    NOTE: The /getDataByDates endpoint automatically populates InfluxDB when called,
+    so this tool simply needs to call that endpoint to trigger the population.
+
+    Args:
+        params: Symbol, timeframe, and number of days to populate
+
+    Returns:
+        str: Status report on data population
+    '''
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=params.days)
+
+        symbol_id = SYMBOL_IDS.get(params.symbol.upper())
+        if not symbol_id:
+            return f"❌ Unknown symbol: {params.symbol}. Available symbols: {', '.join(SYMBOL_IDS.keys())}"
+
+        # Format dates for API
+        start_iso = start_date.strftime('%Y-%m-%dT00:00:00.000Z')
+        end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z')
+
+        result = f"# 📥 Populating InfluxDB: {params.symbol} ({params.timeframe})\n\n"
+        result += f"**Period:** {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')} ({params.days} days)\n\n"
+
+        # Call /getDataByDates which automatically populates InfluxDB
+        result += "## Fetching Data from cTrader API (auto-populates InfluxDB)\n\n"
+
+        ctrader_data = await _make_api_request(
+            "/getDataByDates",
+            method="GET",
+            params={
+                "pair": symbol_id,
+                "timeframe": params.timeframe,
+                "startDate": start_iso,
+                "endDate": end_iso
+            },
+            require_auth=False
+        )
+
+        if not ctrader_data or "data" not in ctrader_data or not ctrader_data["data"]:
+            return result + "❌ **Error:** No data available from cTrader API for this period.\n"
+
+        bars_fetched = len(ctrader_data["data"])
+        result += f"✅ **Successfully fetched and populated {bars_fetched:,} bars**\n\n"
+
+        # Show date range of fetched data
+        if bars_fetched > 0:
+            first_bar = ctrader_data["data"][0]
+            last_bar = ctrader_data["data"][-1]
+            first_time = datetime.fromtimestamp(first_bar['timestamp'] / 1000).strftime('%Y-%m-%d %H:%M')
+            last_time = datetime.fromtimestamp(last_bar['timestamp'] / 1000).strftime('%Y-%m-%d %H:%M')
+            result += f"**Data range:** {first_time} to {last_time}\n\n"
+
+        result += "## ✅ Population Complete\n\n"
+        result += f"InfluxDB now has {bars_fetched:,} bars of **{params.symbol} {params.timeframe}** data.\n"
+        result += f"The /getDataByDates endpoint automatically populated InfluxDB during the fetch.\n"
+        result += f"\nYou can now run backtests with complete historical data!\n"
+
+        return result
+
+    except Exception as e:
+        return _handle_error(e)
+
+@mcp.tool(
+    name="update_outdated_symbols",
+    annotations={
+        "title": "Bulk Update Outdated Symbols in InfluxDB",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True
+    }
+)
+async def update_outdated_symbols(
+    target_date: str,
+    timeframe: str = "15m",
+    measurement: str = "trendbar"
+) -> str:
+    '''
+    Efficiently update all symbols that are outdated in InfluxDB.
+
+    This tool checks which symbols need updating and fetches them all in bulk,
+    much more efficient than updating symbols one at a time.
+
+    Args:
+        target_date: Target date in YYYY-MM-DD format (e.g., "2024-11-28")
+        timeframe: Timeframe to update (default: "15m")
+        measurement: Measurement to check (default: "trendbar")
+
+    Returns:
+        str: Summary of updates performed
+    '''
+    try:
+        from datetime import datetime
+        import asyncio
+
+        result = f"# 🔄 Bulk Symbol Update\n\n"
+        result += f"**Target Date:** {target_date}\n"
+        result += f"**Timeframe:** {timeframe}\n"
+        result += f"**Measurement:** {measurement}\n\n"
+
+        # Parse target date
+        target_dt = datetime.strptime(target_date, '%Y-%m-%d')
+
+        # Get current symbol status
+        flux_query = f'''
+        from(bucket: "{INFLUXDB_BUCKET}")
+          |> range(start: 0)
+          |> filter(fn: (r) => r["_measurement"] == "{measurement}" and r["timeframe"] == "{timeframe}")
+          |> group(columns: ["symbol"])
+          |> max(column: "_time")
+        '''
+
+        tables = query_api.query(flux_query, org=INFLUXDB_ORG)
+
+        # Build list of symbols that need updating
+        symbols_to_update = []
+        symbol_status = {}
+
+        for table in tables:
+            for record in table.records:
+                symbol = record.values.get("symbol")
+                last_time = record.get_time()
+
+                if symbol and last_time:
+                    symbol_status[symbol] = last_time
+                    # If data is older than target date, mark for update
+                    if last_time.date() < target_dt.date():
+                        symbols_to_update.append(symbol)
+
+        # Also check for symbols that have no data at all
+        all_known_symbols = set(SYMBOL_IDS.keys())
+        symbols_with_data = set(symbol_status.keys())
+        missing_symbols = all_known_symbols - symbols_with_data
+
+        result += f"## 📊 Status\n\n"
+        result += f"- **Symbols with data:** {len(symbols_with_data)}\n"
+        result += f"- **Symbols needing update:** {len(symbols_to_update)}\n"
+        result += f"- **Symbols with no data:** {len(missing_symbols)}\n\n"
+
+        # Combine outdated and missing symbols
+        all_to_update = list(set(symbols_to_update) | missing_symbols)
+
+        if not all_to_update:
+            return result + "✅ All symbols are up to date!\n"
+
+        result += f"## 🔄 Updating {len(all_to_update)} symbols\n\n"
+
+        # Calculate days to fetch
+        days_to_fetch = max((target_dt - datetime.now()).days + 1, 7)
+        if days_to_fetch < 0:
+            days_to_fetch = 7
+
+        # Update symbols concurrently
+        async def update_symbol(symbol: str) -> dict:
+            try:
+                symbol_id = SYMBOL_IDS.get(symbol)
+                if not symbol_id:
+                    return {"symbol": symbol, "status": "skipped", "reason": "No ID mapping"}
+
+                end_date = target_dt
+                start_date = end_date - timedelta(days=days_to_fetch)
+
+                start_iso = start_date.strftime('%Y-%m-%dT00:00:00.000Z')
+                end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z')
+
+                import httpx
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(
+                        f"{API_BASE_URL}/getDataByDates",
+                        params={
+                            "pair": symbol_id,
+                            "timeframe": timeframe,
+                            "startDate": start_iso,
+                            "endDate": end_iso
+                        }
+                    )
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        bars = len(data.get('data', []))
+                        return {"symbol": symbol, "status": "success", "bars": bars}
+                    else:
+                        return {"symbol": symbol, "status": "failed", "reason": f"HTTP {response.status_code}"}
+
+            except Exception as e:
+                return {"symbol": symbol, "status": "error", "reason": str(e)}
+
+        # Run updates concurrently (max 5 at a time to avoid overwhelming the API)
+        results = []
+        for i in range(0, len(all_to_update), 5):
+            batch = all_to_update[i:i+5]
+            batch_results = await asyncio.gather(*[update_symbol(sym) for sym in batch])
+            results.extend(batch_results)
+
+        # Summarize results
+        success_count = sum(1 for r in results if r["status"] == "success")
+        failed_count = len(results) - success_count
+
+        result += f"### Results\n\n"
+        result += f"- ✅ **Successful:** {success_count}\n"
+        result += f"- ❌ **Failed:** {failed_count}\n\n"
+
+        if failed_count > 0:
+            result += "**Failed symbols:**\n"
+            for r in results:
+                if r["status"] != "success":
+                    result += f"- {r['symbol']}: {r.get('reason', 'Unknown error')}\n"
+
+        return result
+
+    except Exception as e:
+        return _handle_error(e)
+
+@mcp.tool(
+    name="list_influxdb_buckets",
+    annotations={
+        "title": "List InfluxDB Buckets",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
+async def list_influxdb_buckets() -> str:
+    '''
+    List all buckets (databases) available in InfluxDB.
+
+    Returns:
+        str: List of buckets with their details
+    '''
+    try:
+        result = "# 📊 InfluxDB Buckets\n\n"
+
+        # Get buckets using the InfluxDB API
+        buckets_api = influxdb_client.buckets_api()
+        buckets = buckets_api.find_buckets().buckets
+
+        if buckets and len(buckets) > 0:
+            result += f"Found {len(buckets)} bucket(s):\n\n"
+            result += "| Bucket Name | Org | Retention | Created |\n"
+            result += "|-------------|-----|-----------|----------|\n"
+
+            for bucket in buckets:
+                retention = "Forever" if bucket.retention_rules is None or len(bucket.retention_rules) == 0 else f"{bucket.retention_rules[0].every_seconds // 3600}h"
+                created = bucket.created_at.strftime('%Y-%m-%d') if bucket.created_at else "Unknown"
+                result += f"| **{bucket.name}** | {bucket.org_id or 'N/A'} | {retention} | {created} |\n"
+
+            result += "\n"
+        else:
+            result += "No buckets found.\n"
+
+        return result
+
+    except Exception as e:
+        return _handle_error(e)
+
+@mcp.tool(
+    name="list_measurements_in_bucket",
+    annotations={
+        "title": "List Measurements in InfluxDB Bucket",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
+async def list_measurements_in_bucket(bucket_name: str = INFLUXDB_BUCKET) -> str:
+    '''
+    List all measurements in a specific InfluxDB bucket.
+
+    Args:
+        bucket_name: Name of the bucket to query (defaults to market_data)
+
+    Returns:
+        str: List of measurements with counts
+    '''
+    try:
+        result = f"# 📊 Measurements in '{bucket_name}'\n\n"
+
+        # Flux query to get unique measurements
+        flux_query = f'''
+        import "influxdata/influxdb/schema"
+
+        schema.measurements(bucket: "{bucket_name}")
+        '''
+
+        tables = query_api.query(flux_query, org=INFLUXDB_ORG)
+
+        measurements = []
+        for table in tables:
+            for record in table.records:
+                measurement = record.values.get("_value")
+                if measurement:
+                    measurements.append(measurement)
+
+        if measurements:
+            result += f"Found {len(measurements)} measurement(s):\n\n"
+
+            for measurement in measurements:
+                result += f"- **{measurement}**\n"
+
+            result += "\n💡 **Tip:** To get detailed statistics for a measurement, use a custom Flux query.\n\n"
+        else:
+            result += f"No measurements found in bucket '{bucket_name}'.\n"
+            result += "\n💡 The bucket may be empty or you may need to populate it with data.\n"
+
+        return result
+
+    except Exception as e:
+        return _handle_error(e)
+
+@mcp.tool(
+    name="run_flux_query",
+    annotations={
+        "title": "Run Custom Flux Query on InfluxDB",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True
+    }
+)
+async def run_flux_query(query: str) -> str:
+    '''
+    Execute a custom Flux query against InfluxDB.
+
+    This tool allows running any Flux query to explore data, get counts,
+    list tags, find unique values, etc.
+
+    Args:
+        query: The Flux query to execute
+
+    Returns:
+        str: Query results formatted as a table or list
+    '''
+    try:
+        result = "# 📊 Flux Query Results\n\n"
+        result += f"**Query:**\n```flux\n{query}\n```\n\n"
+
+        tables = query_api.query(query, org=INFLUXDB_ORG)
+
+        if not tables or len(tables) == 0:
+            return result + "No results returned.\n"
+
+        result += "**Results:**\n\n"
+
+        # Process results
+        total_records = 0
+        for table_idx, table in enumerate(tables):
+            if len(table.records) == 0:
+                continue
+
+            total_records += len(table.records)
+
+            # Get column names from first record
+            if table.records:
+                first_record = table.records[0]
+                columns = list(first_record.values.keys())
+
+                # Create markdown table
+                result += f"### Table {table_idx + 1}\n\n"
+                result += "| " + " | ".join(columns) + " |\n"
+                result += "|" + "|".join(["---" for _ in columns]) + "|\n"
+
+                # Add rows (limit to 100 per table)
+                for record in table.records[:100]:
+                    values = [str(record.values.get(col, "")) for col in columns]
+                    result += "| " + " | ".join(values) + " |\n"
+
+                if len(table.records) > 100:
+                    result += f"\n*Showing first 100 of {len(table.records)} records*\n"
+
+                result += "\n"
+
+        result += f"**Total records:** {total_records}\n"
+
+        return result
+
+    except Exception as e:
+        return f"# ❌ Query Error\n\n```\n{str(e)}\n```\n\nPlease check your Flux query syntax."
+
+@mcp.tool(
+    name="list_symbols_in_influxdb",
+    annotations={
+        "title": "List Symbols Available in InfluxDB",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True
+    }
+)
+async def list_symbols_in_influxdb(measurement: str = "trendbar") -> str:
+    '''
+    List all trading symbols that have data in InfluxDB using a Flux query.
+
+    This tool uses a single efficient Flux query to get all symbols with data
+    instead of making individual API calls for each symbol.
+
+    Args:
+        measurement: The measurement to query (default: "trendbar")
+
+    Returns:
+        str: List of symbols with data counts and date ranges
+    '''
+    try:
+        result = f"# 📊 Symbols in InfluxDB (measurement: {measurement})\n\n"
+
+        # Flux query to get all unique symbols with their record counts
+        flux_query = f'''
+        from(bucket: "{INFLUXDB_BUCKET}")
+          |> range(start: 0)
+          |> filter(fn: (r) => r["_measurement"] == "{measurement}")
+          |> group(columns: ["symbol", "timeframe"])
+          |> count()
+          |> group()
+        '''
+
+        tables = query_api.query(flux_query, org=INFLUXDB_ORG)
+
+        # Process results
+        symbol_data = {}
+        for table in tables:
+            for record in table.records:
+                symbol = record.values.get("symbol")
+                timeframe = record.values.get("timeframe")
+                count = record.values.get("_value", 0)
+
+                if symbol not in symbol_data:
+                    symbol_data[symbol] = {}
+
+                symbol_data[symbol][timeframe] = count
+
+        # Get date ranges for each symbol using a more efficient query
+        for symbol in symbol_data.keys():
+            flux_range_query = f'''
+            from(bucket: "{INFLUXDB_BUCKET}")
+              |> range(start: 0)
+              |> filter(fn: (r) => r["_measurement"] == "{measurement}" and r["symbol"] == "{symbol}")
+              |> keep(columns: ["_time"])
+              |> group()
+              |> sort(columns: ["_time"])
+              |> limit(n: 1, offset: 0)
+            '''
+
+            range_tables = query_api.query(flux_range_query, org=INFLUXDB_ORG)
+            if range_tables and len(range_tables) > 0:
+                for record in range_tables[0].records:
+                    symbol_data[symbol]["earliest"] = record.get_time()
+
+            # Get latest time
+            flux_latest_query = f'''
+            from(bucket: "{INFLUXDB_BUCKET}")
+              |> range(start: 0)
+              |> filter(fn: (r) => r["_measurement"] == "{measurement}" and r["symbol"] == "{symbol}")
+              |> keep(columns: ["_time"])
+              |> group()
+              |> sort(columns: ["_time"], desc: true)
+              |> limit(n: 1)
+            '''
+
+            latest_tables = query_api.query(flux_latest_query, org=INFLUXDB_ORG)
+            if latest_tables and len(latest_tables) > 0:
+                for record in latest_tables[0].records:
+                    symbol_data[symbol]["latest"] = record.get_time()
+
+        # Format results
+        if symbol_data:
+            result += f"## ✅ Symbols with Data ({len(symbol_data)})\n\n"
+            result += "| Symbol | Timeframes | Total Bars | Data Range |\n"
+            result += "|--------|------------|------------|------------|\n"
+
+            for symbol, data in sorted(symbol_data.items()):
+                timeframes = [tf for tf in data.keys() if tf not in ["earliest", "latest"]]
+                total_bars = sum(data.get(tf, 0) for tf in timeframes)
+
+                earliest = data.get("earliest")
+                latest = data.get("latest")
+
+                if earliest and latest:
+                    date_range = f"{earliest.strftime('%Y-%m-%d')} to {latest.strftime('%Y-%m-%d')}"
+                else:
+                    date_range = "Unknown"
+
+                timeframe_str = ", ".join(timeframes)
+                result += f"| **{symbol}** | {timeframe_str} | {total_bars:,} | {date_range} |\n"
+
+            result += "\n"
+        else:
+            result += "## ⚠️ No Symbols with Data\n\n"
+            result += "InfluxDB appears to be empty. Use the `populate_influxdb_from_ctrader` tool to add data.\n\n"
+
+        # Check for known symbols without data
+        symbols_in_db = set(symbol_data.keys())
+        all_known_symbols = set(SYMBOL_IDS.keys())
+        symbols_without_data = all_known_symbols - symbols_in_db
+
+        if symbols_without_data:
+            result += f"## ❌ Known Symbols without Data ({len(symbols_without_data)})\n\n"
+
+            # Group in rows of 5
+            symbols_list = sorted(list(symbols_without_data))
+            for i in range(0, len(symbols_list), 5):
+                row = symbols_list[i:i+5]
+                result += ", ".join(row) + "\n\n"
+
+            result += "💡 **Tip:** Use `populate_influxdb_from_ctrader` to add data for these symbols.\n"
+
+        return result
+
     except Exception as e:
         return _handle_error(e)
 
