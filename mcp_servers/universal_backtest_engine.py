@@ -360,6 +360,52 @@ async def list_tools() -> list[Tool]:
                 },
                 "additionalProperties": False
             }
+        ),
+        Tool(
+            name="bulk_backtest_strategy",
+            description="Run bulk backtests across multiple symbols, timeframes, and SL/TP combinations. Generates comprehensive HTML report.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "strategy_name": {
+                        "type": "string",
+                        "description": "Name of the strategy cartridge to test"
+                    },
+                    "symbols": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of symbols to test (e.g., ['EURUSD_SB', 'GBPUSD_SB'])"
+                    },
+                    "timeframes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of timeframes to test (e.g., ['15m', '30m', '1h'])"
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date in YYYY-MM-DD format"
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date in YYYY-MM-DD format"
+                    },
+                    "sl_tp_combinations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "stop_loss_pips": {"type": "integer", "minimum": 1},
+                                "take_profit_pips": {"type": "integer", "minimum": 1}
+                            },
+                            "required": ["stop_loss_pips", "take_profit_pips"]
+                        },
+                        "description": "List of SL/TP combinations to test. Can be a single combination or multiple.",
+                        "default": [{"stop_loss_pips": 15, "take_profit_pips": 25}]
+                    }
+                },
+                "required": ["strategy_name", "symbols", "timeframes", "start_date", "end_date"],
+                "additionalProperties": False
+            }
         )
     ]
 
@@ -391,6 +437,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 
             elif name == "create_price_chart":
                 return await handle_create_price_chart(connector, arguments)
+                
+            elif name == "bulk_backtest_strategy":
+                return await handle_bulk_backtest(registry, engine, arguments)
                 
             else:
                 return [TextContent(
@@ -906,6 +955,120 @@ async def handle_create_price_chart(connector: DataConnector, arguments: dict) -
             type="text",
             text=f"❌ Chart creation failed: {str(e)}"
         )]
+
+
+async def handle_bulk_backtest(registry: StrategyRegistry, engine: UniversalBacktestEngine, arguments: dict) -> list[TextContent]:
+    """Handle bulk backtesting across multiple symbols, timeframes, and SL/TP combinations."""
+    import asyncio
+    from shared.bulk_backtest_report import BulkBacktestReportGenerator
+    
+    strategy_name = arguments["strategy_name"]
+    symbols = arguments["symbols"]
+    timeframes = arguments["timeframes"]
+    start_date = arguments["start_date"]
+    end_date = arguments["end_date"]
+    sl_tp_combinations = arguments.get("sl_tp_combinations", [{"stop_loss_pips": 15, "take_profit_pips": 25}])
+    
+    # Calculate total tests
+    total_tests = len(symbols) * len(timeframes) * len(sl_tp_combinations)
+    
+    result_text = f"🚀 **Starting Bulk Backtest**\n\n"
+    result_text += f"**Strategy:** {strategy_name}\n"
+    result_text += f"**Symbols:** {', '.join(symbols)}\n"
+    result_text += f"**Timeframes:** {', '.join(timeframes)}\n"
+    result_text += f"**Period:** {start_date} to {end_date}\n"
+    result_text += f"**SL/TP Combinations:** {len(sl_tp_combinations)}\n"
+    result_text += f"**Total Tests:** {total_tests}\n\n"
+    result_text += f"⏳ Running backtests...\n\n"
+    
+    # Run all backtests
+    results = []
+    completed = 0
+    
+    for sl_tp in sl_tp_combinations:
+        stop_loss = sl_tp["stop_loss_pips"]
+        take_profit = sl_tp["take_profit_pips"]
+        
+        for symbol in symbols:
+            for timeframe in timeframes:
+                completed += 1
+                
+                try:
+                    # Create configuration
+                    config = BacktestConfiguration(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        start_date=start_date,
+                        end_date=end_date,
+                        initial_balance=10000,
+                        risk_per_trade=0.02,
+                        stop_loss_pips=stop_loss,
+                        take_profit_pips=take_profit
+                    )
+                    
+                    # Get strategy
+                    strategy = registry.create_strategy(strategy_name)
+                    
+                    # Run backtest
+                    start_time = datetime.now()
+                    backtest_results = await engine.run_backtest(strategy, config)
+                    execution_time = (datetime.now() - start_time).total_seconds()
+                    
+                    # Store result
+                    results.append({
+                        'symbol': symbol,
+                        'timeframe': timeframe,
+                        'stop_loss_pips': stop_loss,
+                        'take_profit_pips': take_profit,
+                        'total_trades': backtest_results.total_trades,
+                        'win_rate': backtest_results.win_rate,
+                        'total_pips': backtest_results.total_pips,
+                        'profit_factor': backtest_results.profit_factor,
+                        'max_drawdown': backtest_results.max_drawdown,
+                        'execution_time': execution_time,
+                        'status': '✅ Success'
+                    })
+                    
+                except Exception as e:
+                    results.append({
+                        'symbol': symbol,
+                        'timeframe': timeframe,
+                        'stop_loss_pips': stop_loss,
+                        'take_profit_pips': take_profit,
+                        'total_trades': 0,
+                        'win_rate': 0,
+                        'total_pips': 0,
+                        'profit_factor': 0,
+                        'max_drawdown': 0,
+                        'execution_time': 0,
+                        'status': f'❌ Error: {str(e)[:50]}'
+                    })
+    
+    # Generate HTML report
+    report_generator = BulkBacktestReportGenerator()
+    report_path = report_generator.generate_report(
+        strategy_name=strategy_name,
+        results=results,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    # Calculate summary
+    successful = [r for r in results if r['status'] == '✅ Success']
+    profitable = [r for r in results if r['total_pips'] > 0]
+    total_pips = sum(r['total_pips'] for r in results)
+    
+    result_text += f"✅ **Bulk Backtest Complete!**\n\n"
+    result_text += f"**Results:**\n"
+    result_text += f"• Total Tests: {total_tests}\n"
+    result_text += f"• Successful: {len(successful)}\n"
+    result_text += f"• Profitable: {len(profitable)} ({len(profitable)/total_tests*100:.1f}%)\n"
+    result_text += f"• Total Pips: {total_pips:+.1f}\n\n"
+    result_text += f"📊 **HTML Report Generated:**\n"
+    result_text += f"`{report_path}`\n\n"
+    result_text += f"💡 **To view:** Open the file in your browser\n"
+    
+    return [TextContent(type="text", text=result_text)]
 
 
 async def main():

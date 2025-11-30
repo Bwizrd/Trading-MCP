@@ -287,8 +287,8 @@ class UniversalBacktestEngine:
                         entry_time=candle.timestamp,
                         direction=signal.direction,
                         entry_price=signal.price,
-                        stop_loss=self._calculate_stop_loss(signal.price, signal.direction, config.stop_loss_pips),
-                        take_profit=self._calculate_take_profit(signal.price, signal.direction, config.take_profit_pips),
+                        stop_loss=self._calculate_stop_loss(signal.price, signal.direction, config.stop_loss_pips, config.symbol),
+                        take_profit=self._calculate_take_profit(signal.price, signal.direction, config.take_profit_pips, config.symbol),
                         result=None  # Will be set when trade closes
                     )
                     
@@ -408,8 +408,8 @@ class UniversalBacktestEngine:
                         entry_time=exec_candle.timestamp,
                         direction=signal.direction,
                         entry_price=exec_candle.open,  # Use execution candle open price
-                        stop_loss=self._calculate_stop_loss(exec_candle.open, signal.direction, config.stop_loss_pips),
-                        take_profit=self._calculate_take_profit(exec_candle.open, signal.direction, config.take_profit_pips),
+                        stop_loss=self._calculate_stop_loss(exec_candle.open, signal.direction, config.stop_loss_pips, config.symbol),
+                        take_profit=self._calculate_take_profit(exec_candle.open, signal.direction, config.take_profit_pips, config.symbol),
                         result=None
                     )
                     
@@ -648,8 +648,8 @@ class UniversalBacktestEngine:
             entry_time=entry_candle.timestamp,
             direction=signal.direction,
             entry_price=entry_candle.open,  # Enter at candle open
-            stop_loss=self._calculate_stop_loss(entry_candle.open, signal.direction, config.stop_loss_pips),
-            take_profit=self._calculate_take_profit(entry_candle.open, signal.direction, config.take_profit_pips),
+            stop_loss=self._calculate_stop_loss(entry_candle.open, signal.direction, config.stop_loss_pips, config.symbol),
+            take_profit=self._calculate_take_profit(entry_candle.open, signal.direction, config.take_profit_pips, config.symbol),
             result=None
         )
         
@@ -762,18 +762,36 @@ class UniversalBacktestEngine:
         
         return None
     
-    def _calculate_stop_loss(self, entry_price: float, direction: TradeDirection, stop_loss_pips: float) -> float:
+    def _get_pip_value(self, symbol: str) -> float:
+        """Get pip value based on symbol type."""
+        symbol_upper = symbol.upper()
+        
+        # JPY pairs use 0.01 as pip value (2 decimal places)
+        if 'JPY' in symbol_upper:
+            return 0.01
+        
+        # Indices and commodities use different pip values
+        if any(idx in symbol_upper for idx in ['NAS100', 'US500', 'US30', 'GER40', 'UK100', 'AUS200', 'JPN225']):
+            return 1.0  # Indices typically use 1 point = 1 pip
+        
+        if any(metal in symbol_upper for metal in ['XAUUSD', 'GOLD', 'XAGUSD', 'SILVER']):
+            return 0.01  # Metals use 0.01
+        
+        # Default for most forex pairs (4 decimal places)
+        return 0.0001
+    
+    def _calculate_stop_loss(self, entry_price: float, direction: TradeDirection, stop_loss_pips: float, symbol: str = "EURUSD") -> float:
         """Calculate stop loss price."""
-        pip_value = 0.0001  # Assuming 4-digit precision for now
+        pip_value = self._get_pip_value(symbol)
         
         if direction == TradeDirection.BUY:
             return entry_price - (stop_loss_pips * pip_value)
         else:
             return entry_price + (stop_loss_pips * pip_value)
     
-    def _calculate_take_profit(self, entry_price: float, direction: TradeDirection, take_profit_pips: float) -> float:
+    def _calculate_take_profit(self, entry_price: float, direction: TradeDirection, take_profit_pips: float, symbol: str = "EURUSD") -> float:
         """Calculate take profit price."""
-        pip_value = 0.0001  # Assuming 4-digit precision for now
+        pip_value = self._get_pip_value(symbol)
         
         if direction == TradeDirection.BUY:
             return entry_price + (take_profit_pips * pip_value)
@@ -782,7 +800,7 @@ class UniversalBacktestEngine:
     
     def _calculate_pips(self, entry_price: float, exit_price: float, direction: TradeDirection, symbol: str) -> float:
         """Calculate pip difference between entry and exit."""
-        pip_value = 0.0001  # Assuming 4-digit precision for now
+        pip_value = self._get_pip_value(symbol)
         
         if direction == TradeDirection.BUY:
             return (exit_price - entry_price) / pip_value

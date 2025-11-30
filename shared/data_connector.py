@@ -72,16 +72,20 @@ class DataConnector:
                 symbols_data = symbols_response.json()
                 
                 # Find pair ID for symbol
+                # InfluxDB stores symbols with _SB suffix, but cTrader API uses base symbol
                 pair_id = None
                 symbols_list = symbols_data.get('symbols', [])
+                base_symbol = symbol.replace('_SB', '')  # Remove _SB suffix if present
+                
                 for sym in symbols_list:
-                    # Check both exact match and with _SB suffix
-                    if sym.get('name') == symbol or sym.get('name') == f"{symbol}_SB":
+                    sym_name = sym.get('name', '')
+                    # Check both exact match and with/without _SB suffix
+                    if sym_name == symbol or sym_name == base_symbol or sym_name == f"{base_symbol}_SB":
                         pair_id = sym.get('value')
                         break
                 
                 if not pair_id:
-                    raise Exception(f"Symbol {symbol} not found in symbols list")
+                    raise Exception(f"Symbol {symbol} (or {base_symbol}) not found in symbols list")
                 
                 # Calculate proper number of bars based on timeframe and date range
                 days_diff = (end_date - start_date).days if isinstance(end_date, datetime) and isinstance(start_date, datetime) else 30
@@ -249,15 +253,20 @@ class DataConnector:
                 symbols_data = symbols_response.json()
                 
                 # Find pair ID for symbol
+                # InfluxDB stores symbols with _SB suffix, but cTrader API uses base symbol
                 pair_id = None
                 symbols_list = symbols_data.get('symbols', [])
+                base_symbol = symbol.replace('_SB', '')  # Remove _SB suffix if present
+                
                 for sym in symbols_list:
-                    if sym.get('name') == symbol or sym.get('name') == f"{symbol}_SB":
+                    sym_name = sym.get('name', '')
+                    # Check both exact match and with/without _SB suffix
+                    if sym_name == symbol or sym_name == base_symbol or sym_name == f"{base_symbol}_SB":
                         pair_id = sym.get('value')
                         break
                 
                 if not pair_id:
-                    raise Exception(f"Symbol {symbol} not found in symbols list")
+                    raise Exception(f"Symbol {symbol} (or {base_symbol}) not found in symbols list")
                 
                 # Calculate bars needed if max_bars not specified
                 if max_bars is None:
