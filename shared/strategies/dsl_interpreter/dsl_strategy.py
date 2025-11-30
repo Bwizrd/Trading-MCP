@@ -75,6 +75,7 @@ class DSLStrategy(TradingStrategy):
         self.take_profit_pips = risk_mgmt["take_profit_pips"]
         self.max_daily_trades = risk_mgmt.get("max_daily_trades", 1)
         self.min_pip_distance = risk_mgmt.get("min_pip_distance", 0.0001)
+        self.execution_window_minutes = risk_mgmt.get("execution_window_minutes", 1440)
         
         # Strategy state
         self.daily_trade_count = 0
@@ -123,6 +124,10 @@ class DSLStrategy(TradingStrategy):
     def get_default_parameters(self) -> Dict[str, Any]:
         """Return parameters from DSL config."""
         return self.dsl_config.get("parameters", {})
+    
+    def get_execution_window_minutes(self) -> int:
+        """Return execution window duration in minutes."""
+        return getattr(self, 'execution_window_minutes', 1440)
     
     def requires_indicators(self) -> List[str]:
         """DSL strategies don't require indicators by default."""

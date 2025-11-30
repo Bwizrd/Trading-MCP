@@ -561,11 +561,16 @@ class ChartEngine:
             
             # Format exit reason
             exit_reason = getattr(trade, 'exit_reason', 'Unknown')
-            if hasattr(trade, 'result'):
-                if trade.result.name == 'WIN':
+            if hasattr(trade, 'result') and trade.result:
+                result_name = trade.result.name if hasattr(trade.result, 'name') else str(trade.result).upper()
+                if result_name == 'WIN':
                     exit_reason = 'Take Profit'
-                elif trade.result.name == 'LOSS':
+                elif result_name == 'LOSS':
                     exit_reason = 'Stop Loss'
+                elif result_name == 'EOD_CLOSE':
+                    exit_reason = 'EOD'
+                elif result_name == 'BREAKEVEN':
+                    exit_reason = 'Breakeven'
             
             table_rows.append(f"""
                 <tr>

@@ -322,40 +322,50 @@ async def create_chart_from_backtest_json(json_filename: str) -> list[TextConten
             # Use strategy-provided indicators (architecture-compliant)
             indicators = {}
             
-            # For MA Crossover strategies, recreate DSL strategy to get indicators
-            if "MA Crossover" in strategy_name or "crossover" in strategy_name.lower():
-                try:
-                    from shared.strategies.dsl_interpreter.dsl_strategy import DSLStrategy
+            # Get strategy from registry to calculate indicators
+            try:
+                from shared.strategy_registry import StrategyRegistry
+                
+                with open('/tmp/chart_debug.log', 'a') as f:
+                    f.write(f"Getting strategy: {strategy_name}\n")
+                
+                registry = StrategyRegistry()
+                strategy = registry.create_strategy(strategy_name)
+                
+                with open('/tmp/chart_debug.log', 'a') as f:
+                    f.write(f"Strategy created: {type(strategy)}\n")
+                    f.write(f"Has get_indicator_series: {hasattr(strategy, 'get_indicator_series')}\n")
+                
+                # Check if strategy has get_indicator_series method
+                if hasattr(strategy, 'get_indicator_series'):
+                    strategy_indicators = strategy.get_indicator_series(candles)
                     
-                    # Create MA Crossover DSL config
-                    ma_crossover_config = {
-                        "strategy_type": "indicator_crossover",
-                        "indicators": [
-                            {"type": "SMA", "period": 20, "alias": "fast_ma"},
-                            {"type": "SMA", "period": 50, "alias": "slow_ma"}
-                        ],
-                        "entry_conditions": [
-                            {"type": "crossover", "fast": "fast_ma", "slow": "slow_ma", "direction": "above"}
-                        ],
-                        "exit_conditions": [
-                            {"type": "crossover", "fast": "fast_ma", "slow": "slow_ma", "direction": "below"}
-                        ]
-                    }
+                    with open('/tmp/chart_debug.log', 'a') as f:
+                        f.write(f"Strategy provided indicators: {list(strategy_indicators.keys())}\n")
+                        f.write(f"Indicator lengths: {[(k, len(v)) for k, v in strategy_indicators.items()]}\n")
                     
-                    print(f"🔧 DEBUG: Creating DSL strategy for indicator calculation")
-                    dsl_strategy = DSLStrategy(ma_crossover_config)
-                    strategy_indicators = dsl_strategy.get_indicator_series(candles)
-                    print(f"🔧 DEBUG: DSL strategy provided indicators: {list(strategy_indicators.keys())}")
-                    
-                    # Map DSL indicators to chart format
-                    if 'fast_ma' in strategy_indicators:
-                        indicators['SMA20 (Fast)'] = strategy_indicators['fast_ma']
-                    if 'slow_ma' in strategy_indicators:
-                        indicators['SMA50 (Slow)'] = strategy_indicators['slow_ma']
+                    # Use indicators directly with proper naming
+                    for ind_name, ind_values in strategy_indicators.items():
+                        # Map common indicator names to display names
+                        display_name = ind_name
+                        if ind_name == 'fast_ma':
+                            display_name = 'SMA20 (Fast)'
+                        elif ind_name == 'slow_ma':
+                            display_name = 'SMA50 (Slow)'
+                        indicators[display_name] = ind_values
                         
-                except Exception as e:
-                    print(f"🔧 DEBUG: Error creating DSL strategy for indicators: {e}")
-                    indicators = {}
+                    with open('/tmp/chart_debug.log', 'a') as f:
+                        f.write(f"Final indicators dict: {list(indicators.keys())}\n")
+                else:
+                    with open('/tmp/chart_debug.log', 'a') as f:
+                        f.write(f"Strategy {strategy_name} does not have get_indicator_series method\n")
+                        
+            except Exception as e:
+                with open('/tmp/chart_debug.log', 'a') as f:
+                    f.write(f"Error getting indicators from strategy: {e}\n")
+                    import traceback
+                    f.write(traceback.format_exc())
+                indicators = {}
             
             if not indicators:
                 print(f"🔧 DEBUG: No strategy indicators available for {strategy_name}")

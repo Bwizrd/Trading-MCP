@@ -348,6 +348,18 @@ def integrate_dsl_with_strategy_registry(strategy_registry, dsl_loader: DSLLoade
                 def on_candle_processed(self, context) -> None:
                     return self._dsl_strategy.on_candle_processed(context)
                 
+                def get_indicator_series(self, candles):
+                    """Forward get_indicator_series to underlying DSL strategy."""
+                    if hasattr(self._dsl_strategy, 'get_indicator_series'):
+                        return self._dsl_strategy.get_indicator_series(candles)
+                    return {}
+                
+                def get_execution_window_minutes(self) -> int:
+                    """Forward get_execution_window_minutes to underlying DSL strategy."""
+                    if hasattr(self._dsl_strategy, 'get_execution_window_minutes'):
+                        return self._dsl_strategy.get_execution_window_minutes()
+                    return 1440
+                
                 @property
                 def is_indicator_based(self) -> bool:
                     """Expose the underlying DSL strategy's indicator-based flag."""

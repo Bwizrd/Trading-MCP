@@ -519,9 +519,12 @@ class UniversalBacktestEngine:
                     with open('/tmp/backtest_debug.log', 'a') as f:
                         f.write(f"BACKTEST ENGINE: Signal received {signal.direction} @ {candle.timestamp}\n")
                     
+                    # Get execution window duration from strategy
+                    window_minutes = strategy.get_execution_window_minutes() if hasattr(strategy, 'get_execution_window_minutes') else 1440
+                    
                     # Fetch execution window (small amount of 1m data around signal)
                     execution_window = await self._fetch_execution_window(
-                        config.symbol, candle.timestamp, config
+                        config.symbol, candle.timestamp, config, window_minutes=window_minutes
                     )
                     
                     # DEBUG: Write to file
@@ -566,7 +569,7 @@ class UniversalBacktestEngine:
         symbol: str,
         signal_time: datetime,
         config: BacktestConfiguration,
-        window_minutes: int = 15
+        window_minutes: int
     ) -> Optional[List[Candle]]:
         """
         Fetch a small window of 1-minute data around a signal using optimized data connector.
@@ -804,8 +807,10 @@ class UniversalBacktestEngine:
         
         # Basic stats
         total_pips = sum(trade.pips for trade in trades if trade.pips is not None)
-        winning_trades = [t for t in trades if t.result == TradeResult.WIN]
-        losing_trades = [t for t in trades if t.result == TradeResult.LOSS]
+        
+        # Classify trades by pips (including EOD_CLOSE trades)
+        winning_trades = [t for t in trades if t.pips is not None and t.pips > 0]
+        losing_trades = [t for t in trades if t.pips is not None and t.pips < 0]
         
         win_rate = len(winning_trades) / len(trades) if trades else 0.0
         

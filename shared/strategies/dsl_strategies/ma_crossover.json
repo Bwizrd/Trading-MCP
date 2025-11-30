@@ -28,7 +28,8 @@
     "stop_loss_pips": 20,
     "take_profit_pips": 30,
     "max_daily_trades": 3,
-    "min_pip_distance": 0.0001
+    "min_pip_distance": 0.0001,
+    "execution_window_minutes": 1440
   },
   "parameters": {
     "signal_logic": "crossover",
