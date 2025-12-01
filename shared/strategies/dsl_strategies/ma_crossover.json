@@ -1,0 +1,44 @@
+{
+  "name": "MA Crossover Strategy",
+  "version": "1.0.0",
+  "description": "Moving Average Crossover strategy using SMA 20 and SMA 50. Generates BUY signals when fast MA crosses above slow MA, SELL signals when fast MA crosses below slow MA.",
+  "indicators": [
+    {
+      "type": "SMA",
+      "period": 20,
+      "alias": "fast_ma"
+    },
+    {
+      "type": "SMA", 
+      "period": 50,
+      "alias": "slow_ma"
+    }
+  ],
+  "conditions": {
+    "buy": {
+      "compare": "fast_ma > slow_ma",
+      "crossover": true
+    },
+    "sell": {
+      "compare": "fast_ma < slow_ma", 
+      "crossover": true
+    }
+  },
+  "risk_management": {
+    "stop_loss_pips": 20,
+    "take_profit_pips": 30,
+    "max_daily_trades": 3,
+    "min_pip_distance": 0.0001,
+    "execution_window_minutes": 1440
+  },
+  "parameters": {
+    "signal_logic": "crossover",
+    "confidence_threshold": 0.7
+  },
+  "metadata": {
+    "author": "DSL System",
+    "created_date": "2025-11-17",
+    "tags": ["indicator-based", "crossover", "moving-average", "SMA"],
+    "notes": "Classic MA crossover strategy with SMA20/50. Requires crossover for signal generation to avoid false signals during ranging markets."
+  }
+}

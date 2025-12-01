@@ -1,0 +1,51 @@
+{
+  "strategy_name": "VWAP Momentum",
+  "strategy_version": "2.0.0",
+  "configuration": {
+    "symbol": "EURUSD",
+    "start_date": "2025-11-09",
+    "end_date": "2025-11-16",
+    "timeframe": "30m",
+    "stop_loss_pips": 15,
+    "take_profit_pips": 25,
+    "initial_balance": 10000,
+    "risk_per_trade": 0.02,
+    "max_open_trades": 1,
+    "commission_per_trade": 0.0
+  },
+  "trades": [],
+  "summary": {
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "win_rate": 0.0,
+    "total_pips": 0.0,
+    "profit_factor": 0.0,
+    "average_win": 0.0,
+    "average_loss": 0.0,
+    "largest_win": 0.0,
+    "largest_loss": 0.0
+  },
+  "risk_metrics": {
+    "max_drawdown": 0.0,
+    "max_consecutive_losses": 0,
+    "max_consecutive_wins": 0
+  },
+  "execution": {
+    "start_time": "2025-11-16T12:33:19.740141",
+    "end_time": "2025-11-16T12:33:21.591755",
+    "execution_time_seconds": 1.851614,
+    "data_source": "InfluxDB (fresh)",
+    "total_candles_processed": 1
+  },
+  "market_data": [
+    {
+      "timestamp": "2025-11-13T13:00:00",
+      "open": 1.16229,
+      "high": 1.16248,
+      "low": 1.1615,
+      "close": 1.16153,
+      "volume": 3586.0
+    }
+  ]
+}

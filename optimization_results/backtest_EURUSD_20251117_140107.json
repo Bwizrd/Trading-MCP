@@ -1,0 +1,355 @@
+{
+  "strategy_name": "MA Crossover Strategy",
+  "strategy_version": "1.0.0",
+  "configuration": {
+    "symbol": "EURUSD",
+    "start_date": "2025-11-10",
+    "end_date": "2025-11-17",
+    "timeframe": "30m",
+    "stop_loss_pips": 15,
+    "take_profit_pips": 25,
+    "initial_balance": 10000,
+    "risk_per_trade": 0.02,
+    "max_open_trades": 1,
+    "commission_per_trade": 0.0
+  },
+  "trades": [],
+  "summary": {
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "win_rate": 0.0,
+    "total_pips": 0.0,
+    "profit_factor": 0.0,
+    "average_win": 0.0,
+    "average_loss": 0.0,
+    "largest_win": 0.0,
+    "largest_loss": 0.0
+  },
+  "risk_metrics": {
+    "max_drawdown": 0.0,
+    "max_consecutive_losses": 0,
+    "max_consecutive_wins": 0
+  },
+  "execution": {
+    "start_time": "2025-11-17T14:01:07.083556",
+    "end_time": "2025-11-17T14:01:07.204790",
+    "execution_time_seconds": 0.121234,
+    "data_source": "InfluxDB (fresh)",
+    "total_candles_processed": 39
+  },
+  "market_data": [
+    {
+      "timestamp": "2025-11-14T14:30:00",
+      "open": 1.16327,
+      "high": 1.1638,
+      "low": 1.16207,
+      "close": 1.16231,
+      "volume": 5758.0
+    },
+    {
+      "timestamp": "2025-11-14T15:00:00",
+      "open": 1.1623,
+      "high": 1.16252,
+      "low": 1.16153,
+      "close": 1.16186,
+      "volume": 5674.0
+    },
+    {
+      "timestamp": "2025-11-14T15:30:00",
+      "open": 1.16184,
+      "high": 1.16222,
+      "low": 1.16058,
+      "close": 1.16127,
+      "volume": 4812.0
+    },
+    {
+      "timestamp": "2025-11-14T16:00:00",
+      "open": 1.16126,
+      "high": 1.16223,
+      "low": 1.16095,
+      "close": 1.16169,
+      "volume": 3784.0
+    },
+    {
+      "timestamp": "2025-11-14T16:30:00",
+      "open": 1.16168,
+      "high": 1.16206,
+      "low": 1.1613,
+      "close": 1.16167,
+      "volume": 3458.0
+    },
+    {
+      "timestamp": "2025-11-14T17:00:00",
+      "open": 1.16165,
+      "high": 1.16178,
+      "low": 1.16077,
+      "close": 1.16133,
+      "volume": 3300.0
+    },
+    {
+      "timestamp": "2025-11-14T17:30:00",
+      "open": 1.16134,
+      "high": 1.16143,
+      "low": 1.16094,
+      "close": 1.16136,
+      "volume": 2696.0
+    },
+    {
+      "timestamp": "2025-11-14T18:00:00",
+      "open": 1.16137,
+      "high": 1.16155,
+      "low": 1.16094,
+      "close": 1.16153,
+      "volume": 2630.0
+    },
+    {
+      "timestamp": "2025-11-14T18:30:00",
+      "open": 1.16154,
+      "high": 1.16179,
+      "low": 1.1614,
+      "close": 1.16163,
+      "volume": 2366.0
+    },
+    {
+      "timestamp": "2025-11-14T19:00:00",
+      "open": 1.16161,
+      "high": 1.16188,
+      "low": 1.16157,
+      "close": 1.16176,
+      "volume": 2200.0
+    },
+    {
+      "timestamp": "2025-11-14T19:30:00",
+      "open": 1.16177,
+      "high": 1.16197,
+      "low": 1.16156,
+      "close": 1.16177,
+      "volume": 2220.0
+    },
+    {
+      "timestamp": "2025-11-14T20:00:00",
+      "open": 1.16178,
+      "high": 1.16205,
+      "low": 1.16166,
+      "close": 1.16199,
+      "volume": 1880.0
+    },
+    {
+      "timestamp": "2025-11-14T20:30:00",
+      "open": 1.16198,
+      "high": 1.16227,
+      "low": 1.16189,
+      "close": 1.16202,
+      "volume": 2094.0
+    },
+    {
+      "timestamp": "2025-11-14T21:00:00",
+      "open": 1.16203,
+      "high": 1.16234,
+      "low": 1.16192,
+      "close": 1.16212,
+      "volume": 1061.0
+    },
+    {
+      "timestamp": "2025-11-14T21:30:00",
+      "open": 1.16211,
+      "high": 1.16223,
+      "low": 1.1618,
+      "close": 1.16218,
+      "volume": 1193.0
+    },
+    {
+      "timestamp": "2025-11-17T01:30:00",
+      "open": 1.16076,
+      "high": 1.16098,
+      "low": 1.16052,
+      "close": 1.16063,
+      "volume": 1914.0
+    },
+    {
+      "timestamp": "2025-11-17T02:00:00",
+      "open": 1.16064,
+      "high": 1.16064,
+      "low": 1.16021,
+      "close": 1.16044,
+      "volume": 2038.0
+    },
+    {
+      "timestamp": "2025-11-17T02:30:00",
+      "open": 1.16043,
+      "high": 1.16046,
+      "low": 1.16012,
+      "close": 1.16019,
+      "volume": 1482.0
+    },
+    {
+      "timestamp": "2025-11-17T03:00:00",
+      "open": 1.1602,
+      "high": 1.1602,
+      "low": 1.15994,
+      "close": 1.15999,
+      "volume": 2004.0
+    },
+    {
+      "timestamp": "2025-11-17T03:30:00",
+      "open": 1.15997,
+      "high": 1.16001,
+      "low": 1.15962,
+      "close": 1.15984,
+      "volume": 1590.0
+    },
+    {
+      "timestamp": "2025-11-17T04:00:00",
+      "open": 1.15983,
+      "high": 1.15997,
+      "low": 1.15973,
+      "close": 1.15995,
+      "volume": 946.0
+    },
+    {
+      "timestamp": "2025-11-17T04:30:00",
+      "open": 1.15997,
+      "high": 1.16031,
+      "low": 1.15993,
+      "close": 1.16026,
+      "volume": 1664.0
+    },
+    {
+      "timestamp": "2025-11-17T05:00:00",
+      "open": 1.16025,
+      "high": 1.16051,
+      "low": 1.16013,
+      "close": 1.16023,
+      "volume": 1353.0
+    },
+    {
+      "timestamp": "2025-11-17T05:30:00",
+      "open": 1.16024,
+      "high": 1.16027,
+      "low": 1.15988,
+      "close": 1.16,
+      "volume": 1604.0
+    },
+    {
+      "timestamp": "2025-11-17T06:00:00",
+      "open": 1.16001,
+      "high": 1.16007,
+      "low": 1.15948,
+      "close": 1.16005,
+      "volume": 1982.0
+    },
+    {
+      "timestamp": "2025-11-17T06:30:00",
+      "open": 1.16006,
+      "high": 1.16084,
+      "low": 1.15996,
+      "close": 1.16071,
+      "volume": 1832.0
+    },
+    {
+      "timestamp": "2025-11-17T07:00:00",
+      "open": 1.16072,
+      "high": 1.16129,
+      "low": 1.16062,
+      "close": 1.16126,
+      "volume": 2500.0
+    },
+    {
+      "timestamp": "2025-11-17T07:30:00",
+      "open": 1.16125,
+      "high": 1.16148,
+      "low": 1.16101,
+      "close": 1.1613,
+      "volume": 2480.0
+    },
+    {
+      "timestamp": "2025-11-17T08:00:00",
+      "open": 1.16135,
+      "high": 1.16149,
+      "low": 1.16025,
+      "close": 1.16038,
+      "volume": 3074.0
+    },
+    {
+      "timestamp": "2025-11-17T08:30:00",
+      "open": 1.16036,
+      "high": 1.1607,
+      "low": 1.15986,
+      "close": 1.16028,
+      "volume": 3247.0
+    },
+    {
+      "timestamp": "2025-11-17T09:00:00",
+      "open": 1.16027,
+      "high": 1.16029,
+      "low": 1.15967,
+      "close": 1.15979,
+      "volume": 2542.0
+    },
+    {
+      "timestamp": "2025-11-17T09:30:00",
+      "open": 1.1598,
+      "high": 1.16044,
+      "low": 1.15979,
+      "close": 1.16011,
+      "volume": 2866.0
+    },
+    {
+      "timestamp": "2025-11-17T10:00:00",
+      "open": 1.16012,
+      "high": 1.16078,
+      "low": 1.15996,
+      "close": 1.16065,
+      "volume": 2430.0
+    },
+    {
+      "timestamp": "2025-11-17T10:30:00",
+      "open": 1.16063,
+      "high": 1.16067,
+      "low": 1.15959,
+      "close": 1.15962,
+      "volume": 2762.0
+    },
+    {
+      "timestamp": "2025-11-17T11:00:00",
+      "open": 1.15964,
+      "high": 1.16014,
+      "low": 1.15946,
+      "close": 1.16004,
+      "volume": 2538.0
+    },
+    {
+      "timestamp": "2025-11-17T11:30:00",
+      "open": 1.16007,
+      "high": 1.16028,
+      "low": 1.15977,
+      "close": 1.16008,
+      "volume": 2972.0
+    },
+    {
+      "timestamp": "2025-11-17T12:00:00",
+      "open": 1.16007,
+      "high": 1.16041,
+      "low": 1.15998,
+      "close": 1.16033,
+      "volume": 2449.0
+    },
+    {
+      "timestamp": "2025-11-17T12:30:00",
+      "open": 1.16034,
+      "high": 1.16044,
+      "low": 1.15956,
+      "close": 1.15987,
+      "volume": 2862.0
+    },
+    {
+      "timestamp": "2025-11-17T13:00:00",
+      "open": 1.15988,
+      "high": 1.15994,
+      "low": 1.15917,
+      "close": 1.15948,
+      "volume": 3063.0
+    }
+  ]
+}

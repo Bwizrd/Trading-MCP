@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div id="chart" style="width:100%;height:600px;"></div>
+    <script>
+        var data = [{
+            x: ['2025-11-27', '2025-11-28', '2025-11-29'],
+            close: [1.1601, 1.1602, 1.1603],
+            high: [1.1605, 1.1606, 1.1607],
+            low: [1.1598, 1.1599, 1.1600],
+            open: [1.1600, 1.1601, 1.1602],
+            type: 'candlestick'
+        }];
+        
+        var layout = {
+            title: 'Test Candlestick Chart',
+            xaxis: { title: 'Date' },
+            yaxis: { title: 'Price' }
+        };
+        
+        Plotly.newPlot('chart', data, layout);
+    </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "modular-chart-engine": {
+      "command": "/Users/paul/anaconda3/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/modular_chart_engine.py"
+      ]
+    },
+    "universal-backtest-engine": {
+      "command": "/Users/paul/anaconda3/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/universal_backtest_engine.py"
+      ]
+    },
+    "ctrader-connector": {
+      "command": "/Users/paul/anaconda3/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/ctrader.py"
+      ]
+    },
+    "influxdb-connector": {
+      "command": "/Users/paul/anaconda3/bin/python",
+      "args": [
+        "/Users/paul/Sites/PythonProjects/Trading-MCP/mcp_servers/data_connectors/influxdb.py"
+      ]
+    }
+  }
+}
