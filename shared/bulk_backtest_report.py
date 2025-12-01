@@ -15,9 +15,11 @@ import json
 class BulkBacktestReportGenerator:
     """Generate HTML reports for bulk backtest results."""
     
-    def __init__(self, output_dir: str = "data/reports"):
+    def __init__(self, output_dir: str = None):
+        if output_dir is None:
+            # Hardcoded path - bulk reports go to data/bulk
+            output_dir = "/Users/paul/Sites/PythonProjects/Trading-MCP/data/bulk"
         self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def generate_report(
         self,
@@ -48,7 +50,7 @@ class BulkBacktestReportGenerator:
         # Generate HTML
         html = self._generate_html(strategy_name, results, summary, start_date, end_date)
         
-        # Write to file
+        # Write to file (directory already exists)
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(html)
         
@@ -65,7 +67,7 @@ class BulkBacktestReportGenerator:
             'profitable_pct': (len(profitable) / total_tests * 100) if total_tests > 0 else 0,
             'total_pips': sum(r.get('total_pips', 0) for r in results),
             'avg_win_rate': sum(r.get('win_rate', 0) for r in results) / total_tests if total_tests > 0 else 0,
-            'avg_profit_factor': sum(r.get('profit_factor', 0) for r in results) / total_tests if total_tests > 0 else 0,
+            'avg_profit_factor': sum(r.get('profit_factor', 0) if r.get('profit_factor', 0) != float('inf') else 0 for r in results) / total_tests if total_tests > 0 else 0,
             'best_result': max(results, key=lambda r: r.get('total_pips', 0)) if results else None,
             'worst_result': min(results, key=lambda r: r.get('total_pips', 0)) if results else None
         }
@@ -326,7 +328,7 @@ class BulkBacktestReportGenerator:
             </div>
             <div class="summary-card">
                 <h3>Avg Win Rate</h3>
-                <div class="value">{summary['avg_win_rate']:.1f}%</div>
+                <div class="value">{summary['avg_win_rate']*100:.1f}%</div>
             </div>
             <div class="summary-card">
                 <h3>Avg Profit Factor</h3>
