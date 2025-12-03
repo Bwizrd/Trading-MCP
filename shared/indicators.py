@@ -263,6 +263,83 @@ class BollingerBandsCalculator(IndicatorCalculator):
         return results
 
 
+class MACDCalculator(IndicatorCalculator):
+    """
+    MACD (Moving Average Convergence Divergence) calculator.
+    
+    Calculates MACD line, signal line, and histogram.
+    Returns MACD line as the primary value.
+    """
+    
+    def __init__(self, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9):
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+        self.signal_period = signal_period
+    
+    def get_name(self) -> str:
+        return f"MACD{self.fast_period}_{self.slow_period}_{self.signal_period}"
+    
+    def requires_periods(self) -> int:
+        # Need enough data for slow EMA + signal EMA
+        return self.slow_period + self.signal_period
+    
+    def calculate(self, candles: List[Candle], **kwargs) -> Dict[datetime, float]:
+        """
+        Calculate MACD indicator.
+        
+        Returns MACD line as the primary value.
+        Signal line and histogram are available via get_signal_line() and get_histogram().
+        """
+        if len(candles) < self.slow_period + self.signal_period:
+            return {}
+        
+        results = {}
+        
+        # Convert to pandas for easier calculation
+        df = pd.DataFrame([
+            {
+                'timestamp': c.timestamp,
+                'close': c.close
+            }
+            for c in candles
+        ])
+        
+        # Calculate fast and slow EMAs
+        df['ema_fast'] = df['close'].ewm(span=self.fast_period, adjust=False).mean()
+        df['ema_slow'] = df['close'].ewm(span=self.slow_period, adjust=False).mean()
+        
+        # Calculate MACD line (fast EMA - slow EMA)
+        df['macd'] = df['ema_fast'] - df['ema_slow']
+        
+        # Calculate signal line (EMA of MACD)
+        df['signal'] = df['macd'].ewm(span=self.signal_period, adjust=False).mean()
+        
+        # Calculate histogram (MACD - signal)
+        df['histogram'] = df['macd'] - df['signal']
+        
+        # Store signal and histogram for later retrieval
+        self._signal_line = {}
+        self._histogram = {}
+        
+        # Convert back to dictionary, skipping NaN values
+        for _, row in df.iterrows():
+            if pd.notna(row['macd']) and pd.notna(row['signal']):
+                timestamp = row['timestamp']
+                results[timestamp] = float(row['macd'])
+                self._signal_line[timestamp] = float(row['signal'])
+                self._histogram[timestamp] = float(row['histogram'])
+        
+        return results
+    
+    def get_signal_line(self) -> Dict[datetime, float]:
+        """Get the MACD signal line values."""
+        return getattr(self, '_signal_line', {})
+    
+    def get_histogram(self) -> Dict[datetime, float]:
+        """Get the MACD histogram values."""
+        return getattr(self, '_histogram', {})
+
+
 class IndicatorRegistry:
     """
     Registry for available indicator calculators.
@@ -289,6 +366,9 @@ class IndicatorRegistry:
         # Oscillators
         self.register("RSI", RSICalculator(14))
         self.register("RSI21", RSICalculator(21))
+        
+        # MACD
+        self.register("MACD", MACDCalculator(12, 26, 9))  # Standard MACD
         
         # Bands
         self.register("BB20", BollingerBandsCalculator(20, 2.0))

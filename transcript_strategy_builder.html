@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcript Strategy Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .progress-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+            padding: 0 10px;
+        }
+
+        .progress-step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            right: -50%;
+            width: 100%;
+            height: 3px;
+            background: #dee2e6;
+            z-index: 0;
+        }
+
+        .progress-step.completed:not(:last-child)::after {
+            background: #28a745;
+        }
+
+        .progress-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #dee2e6;
+            color: #6c757d;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.completed .progress-circle {
+            background: #28a745;
+            color: white;
+        }
+
+        .progress-step.active .progress-circle {
+            background: #667eea;
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .progress-label {
+            font-size: 0.9em;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .progress-step.completed .progress-label {
+            color: #28a745;
+        }
+
+        .progress-step.active .progress-label {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .stage {
+            margin-bottom: 40px;
+            padding: 30px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+
+        .stage:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+        }
+
+        .stage-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .stage-title {
+            font-size: 1.8em;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .stage-number {
+            background: #667eea;
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .stage-description {
+            color: #6c757d;
+            margin-bottom: 20px;
+            font-size: 1.05em;
+        }
+
+        .stage-content {
+            background: white;
+            padding: 25px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .instructions {
+            background: #e7f3ff;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196F3;
+        }
+
+        .instructions h3 {
+            color: #1976D2;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #333;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .stage-content h3 {
+            color: #667eea;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .stage-content h3:first-child {
+            margin-top: 0;
+        }
+
+        .stage-content p {
+            margin-bottom: 15px;
+            color: #495057;
+            line-height: 1.6;
+        }
+
+        .stage-content code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #e83e8c;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .prompt-template {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+            color: #212529;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin-bottom: 15px;
+        }
+
+        .placeholder-text {
+            color: #adb5bd;
+            font-style: italic;
+            text-align: center;
+            padding: 40px;
+            font-size: 1.1em;
+        }
+
+        .stage-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            padding: 30px 40px;
+            background: #f8f9fa;
+            border-top: 2px solid #e9ecef;
+        }
+
+        .nav-btn {
+            padding: 12px 30px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-btn:hover:not(:disabled) {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .progress-bar {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .progress-step:not(:last-child)::after {
+                display: none;
+            }
+
+            .stage-header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .stage-actions {
+                flex-direction: column;
+            }
+
+            .navigation {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Transcript Strategy Builder</h1>
+            <p>Convert YouTube trading strategy transcripts into executable DSL cartridges</p>
+        </header>
+
+        <div class="progress-bar">
+            <div class="progress-step active" data-stage="1">
+                <div class="progress-circle">1</div>
+                <div class="progress-label">Extract Logic</div>
+            </div>
+            <div class="progress-step" data-stage="2">
+                <div class="progress-circle">2</div>
+                <div class="progress-label">Clarify</div>
+            </div>
+            <div class="progress-step" data-stage="3">
+                <div class="progress-circle">3</div>
+                <div class="progress-label">Generate DSL</div>
+            </div>
+            <div class="progress-step" data-stage="4">
+                <div class="progress-circle">4</div>
+                <div class="progress-label">Validate & Save</div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="stage" id="stage-1">
+                <div class="stage-header">
+                    <h2 class="stage-title">Stage 1: Extract Trading Logic</h2>
+                    <div class="stage-number">1</div>
+                </div>
+                <div class="stage-description">
+                    Extract core trading logic from raw YouTube transcripts including entry/exit conditions, indicators, and timing information.
+                </div>
+                <div class="instructions">
+                    <h3>📋 Instructions:</h3>
+                    <ol>
+                        <li>Copy the prompt template below</li>
+                        <li>Paste it into Claude or ChatGPT</li>
+                        <li>Paste your YouTube transcript where indicated</li>
+                        <li>Copy the LLM's structured output for Stage 2</li>
+                    </ol>
+                </div>
+                <div class="stage-content">
+                    <pre class="prompt-template" id="prompt-1">You are a trading strategy extraction expert. Your task is to analyze a YouTube transcript and extract the core trading logic.
+
+TRANSCRIPT:
+[User pastes transcript here]
+
+INSTRUCTIONS:
+1. Ignore timestamps, speaker labels, and filler words
+2. Focus on identifying:
+   - Entry conditions (when to BUY)
+   - Exit conditions (when to SELL)
+   - Indicators mentioned (SMA, EMA, RSI, VWAP, etc.)
+   - Timing information (specific times, reference points)
+   - Risk management (stop loss, take profit)
+
+3. Output your findings in this structured format:
+
+STRATEGY NAME: [Descriptive name]
+
+ENTRY CONDITIONS:
+- [Condition 1]
+- [Condition 2]
+
+EXIT CONDITIONS:
+- [Condition 1]
+- [Condition 2]
+
+INDICATORS:
+- [Indicator 1: type, period, purpose]
+- [Indicator 2: type, period, purpose]
+
+TIMING:
+- Reference Time: [HH:MM or "N/A"]
+- Reference Price: [open/high/low/close or "N/A"]
+- Signal Time: [HH:MM or "N/A"]
+
+RISK MANAGEMENT:
+- Stop Loss: [X pips or "not specified"]
+- Take Profit: [X pips or "not specified"]
+
+AMBIGUITIES:
+- [List any unclear or missing information]</pre>
+                </div>
+                <div class="stage-actions">
+                    <button class="btn btn-primary" onclick="copyPrompt('prompt-1', this)">📋 Copy Prompt</button>
+                    <button class="btn btn-success" onclick="markComplete(1, this)">✓ Mark Complete</button>
+                </div>
+            </div>
+
+            <div class="stage" id="stage-2">
+                <div class="stage-header">
+                    <h2 class="stage-title">Stage 2: Clarify Ambiguities</h2>
+                    <div class="stage-number">2</div>
+                </div>
+                <div class="stage-description">
+                    Identify and resolve ambiguities in the extracted strategy logic through targeted clarifying questions.
+                </div>
+                <div class="instructions">
+                    <h3>📋 Instructions:</h3>
+                    <ol>
+                        <li>Copy the prompt template below</li>
+                        <li>Paste it into your LLM conversation</li>
+                        <li>Paste the structured output from Stage 1 where indicated</li>
+                        <li>Answer the clarifying questions the LLM generates</li>
+                        <li>Copy the refined strategy output for Stage 3</li>
+                    </ol>
+                </div>
+                <div class="stage-content">
+                    <pre class="prompt-template" id="prompt-2">You are a trading strategy refinement expert. Your task is to clarify ambiguities and ensure all strategy elements are well-defined.
+
+EXTRACTED STRATEGY:
+[User pastes output from Stage 1]
+
+INSTRUCTIONS:
+1. Review the extracted strategy for:
+   - Missing required information
+   - Ambiguous conditions
+   - Unclear indicator specifications
+   - Incomplete timing information
+
+2. For each ambiguity, generate a specific clarifying question with options
+
+3. Output in this format:
+
+CLARIFYING QUESTIONS:
+
+Q1: [Specific question about ambiguity 1]
+   Option A: [Interpretation 1]
+   Option B: [Interpretation 2]
+   Option C: [Interpretation 3]
+
+Q2: [Specific question about ambiguity 2]
+   Option A: [Interpretation 1]
+   Option B: [Interpretation 2]
+
+[Continue for all ambiguities]
+
+REQUIRED INFORMATION:
+- [List any missing required fields]
+
+After the user provides answers, incorporate them and output:
+
+REFINED STRATEGY:
+[Complete strategy with all ambiguities resolved]</pre>
+                </div>
+                <div class="stage-actions">
+                    <button class="btn btn-primary" onclick="copyPrompt('prompt-2', this)">📋 Copy Prompt</button>
+                    <button class="btn btn-success" onclick="markComplete(2, this)">✓ Mark Complete</button>
+                </div>
+            </div>
+
+            <div class="stage" id="stage-3">
+                <div class="stage-header">
+                    <h2 class="stage-title">Stage 3: Generate DSL JSON</h2>
+                    <div class="stage-number">3</div>
+                </div>
+                <div class="stage-description">
+                    Convert refined trading logic into valid DSL JSON configuration ready for backtesting.
+                </div>
+                <div class="instructions">
+                    <h3>📋 Instructions:</h3>
+                    <ol>
+                        <li>Copy the prompt template below</li>
+                        <li>Paste it into your LLM conversation</li>
+                        <li>Paste the refined strategy from Stage 2 where indicated</li>
+                        <li>Copy the generated DSL JSON for Stage 4</li>
+                    </ol>
+                </div>
+                <div class="stage-content">
+                    <pre class="prompt-template" id="prompt-3">You are a DSL JSON generation expert. Your task is to convert refined trading logic into a valid DSL JSON configuration.
+
+REFINED STRATEGY:
+[User pastes refined strategy from Stage 2]
+
+DSL SCHEMA:
+The DSL supports two types of strategies:
+
+TYPE 1: TIME-BASED STRATEGIES
+Required fields:
+- name: string (strategy name)
+- version: string (semantic version, e.g., "1.0.0")
+- description: string (detailed description)
+- timing: object
+  - reference_time: string (HH:MM format)
+  - reference_price: string ("open", "high", "low", or "close")
+  - signal_time: string (HH:MM format, must be after reference_time)
+- conditions: object
+  - buy: object
+    - compare: string (comparison using signal_price and reference_price)
+  - sell: object
+    - compare: string (comparison using signal_price and reference_price)
+- risk_management: object
+  - stop_loss_pips: number (1-1000)
+  - take_profit_pips: number (1-1000)
+  - max_daily_trades: integer (1-10, optional, default: 1)
+  - min_pip_distance: number (optional, default: 0.0001)
+
+TYPE 2: INDICATOR-BASED STRATEGIES
+Required fields:
+- name: string (strategy name)
+- version: string (semantic version)
+- description: string (detailed description)
+- indicators: array of objects
+  - type: string ("SMA", "EMA", "RSI", or "MACD")
+  - period: integer (1-200)
+  - alias: string (unique identifier for this indicator)
+- conditions: object
+  - buy: object
+    - compare: string (comparison using indicator aliases)
+    - crossover: boolean (optional, true if crossover required)
+  - sell: object
+    - compare: string (comparison using indicator aliases)
+    - crossover: boolean (optional, true if crossover required)
+- risk_management: object (same as time-based)
+
+EXAMPLE TIME-BASED STRATEGY:
+{
+  "name": "10am vs 9:30am Price Compare",
+  "version": "1.0.0",
+  "description": "Buy if 10am price > 9:30am close, Sell if lower",
+  "timing": {
+    "reference_time": "09:30",
+    "reference_price": "close",
+    "signal_time": "10:00"
+  },
+  "conditions": {
+    "buy": {"compare": "signal_price > reference_price"},
+    "sell": {"compare": "signal_price < reference_price"}
+  },
+  "risk_management": {
+    "stop_loss_pips": 15,
+    "take_profit_pips": 25,
+    "max_daily_trades": 1
+  }
+}
+
+EXAMPLE INDICATOR-BASED STRATEGY:
+{
+  "name": "MA Crossover Strategy",
+  "version": "1.0.0",
+  "description": "Moving Average Crossover using SMA 20 and SMA 50",
+  "indicators": [
+    {"type": "SMA", "period": 20, "alias": "fast_ma"},
+    {"type": "SMA", "period": 50, "alias": "slow_ma"}
+  ],
+  "conditions": {
+    "buy": {"compare": "fast_ma > slow_ma", "crossover": true},
+    "sell": {"compare": "fast_ma < slow_ma", "crossover": true}
+  },
+  "risk_management": {
+    "stop_loss_pips": 20,
+    "take_profit_pips": 30,
+    "max_daily_trades": 3
+  }
+}
+
+INSTRUCTIONS:
+1. Determine if this is a time-based or indicator-based strategy
+2. If the strategy uses unsupported indicators or features:
+   - DO NOT refuse to create the DSL
+   - SIMPLIFY the strategy to use supported indicators (SMA, EMA, RSI, MACD)
+   - APPROXIMATE the behavior using available indicators
+   - ADD a comment in the description explaining the simplification
+3. Generate valid DSL JSON following the appropriate schema
+4. Ensure all required fields are present
+5. Use appropriate comparison operators: >, <, >=, <=, ==, !=
+6. Output ONLY the JSON, no additional text
+
+HANDLING UNSUPPORTED FEATURES:
+- If strategy uses unsupported indicators (e.g., Stochastic, ADX):
+  → Use similar supported indicators (RSI for oscillators, MACD for momentum)
+- If strategy has complex multi-candle logic:
+  → Simplify to single-candle crossover conditions
+- If strategy has trailing stops or advanced exits:
+  → Use standard stop loss and take profit
+- ALWAYS output a valid DSL JSON, even if simplified
+
+OUTPUT:
+[Valid DSL JSON only]</pre>
+                </div>
+                <div class="stage-actions">
+                    <button class="btn btn-primary" onclick="copyPrompt('prompt-3', this)">📋 Copy Prompt</button>
+                    <button class="btn btn-success" onclick="markComplete(3, this)">✓ Mark Complete</button>
+                </div>
+            </div>
+
+            <div class="stage" id="stage-4">
+                <div class="stage-header">
+                    <h2 class="stage-title">Stage 4: Validate & Save</h2>
+                    <div class="stage-number">4</div>
+                </div>
+                <div class="stage-description">
+                    Validate the generated DSL JSON and save it as a strategy cartridge for backtesting.
+                </div>
+                <div class="instructions">
+                    <h3>📋 Instructions:</h3>
+                    <ol>
+                        <li>Copy the DSL JSON from Stage 3</li>
+                        <li>Use the MCP validation tool to check if it's valid</li>
+                        <li>If valid, use the MCP save tool to save the strategy</li>
+                        <li>Run a backtest to verify the strategy works</li>
+                    </ol>
+                </div>
+                <div class="stage-content">
+                    <h3>🔍 Step 1: Validate Your DSL JSON</h3>
+                    <p>Use the <code>validate_dsl_strategy</code> MCP tool to ensure your DSL JSON is valid before saving:</p>
+                    
+                    <div class="instructions" style="background: #fff3cd; border-left-color: #ffc107;">
+                        <h3 style="color: #856404;">Example Validation Command:</h3>
+                        <pre class="prompt-template" id="validation-example" style="background: white; margin-top: 10px;">Ask your AI assistant:
+
+"Please validate this DSL strategy JSON:
+{
+  \"name\": \"MA Crossover Strategy\",
+  \"version\": \"1.0.0\",
+  \"description\": \"Moving Average Crossover using SMA 20 and SMA 50\",
+  \"indicators\": [
+    {\"type\": \"SMA\", \"period\": 20, \"alias\": \"fast_ma\"},
+    {\"type\": \"SMA\", \"period\": 50, \"alias\": \"slow_ma\"}
+  ],
+  \"conditions\": {
+    \"buy\": {\"compare\": \"fast_ma > slow_ma\", \"crossover\": true},
+    \"sell\": {\"compare\": \"fast_ma < slow_ma\", \"crossover\": true}
+  },
+  \"risk_management\": {
+    \"stop_loss_pips\": 20,
+    \"take_profit_pips\": 30,
+    \"max_daily_trades\": 3
+  }
+}"</pre>
+                    </div>
+
+                    <h3>✅ Expected Validation Output (Success):</h3>
+                    <pre class="prompt-template" id="validation-success-output">{
+  "valid": true,
+  "errors": [],
+  "strategy_type": "indicator-based",
+  "strategy_name": "MA Crossover Strategy",
+  "message": "Strategy is valid and ready for use"
+}</pre>
+
+                    <h3>❌ Expected Validation Output (Failure):</h3>
+                    <pre class="prompt-template" id="validation-failure-output">{
+  "valid": false,
+  "errors": [
+    "Missing required field: 'version'",
+    "Invalid condition syntax: 'fast_ma >> slow_ma' (use >, <, >=, <=, ==, !=)",
+    "stop_loss_pips must be between 1 and 1000"
+  ],
+  "strategy_type": "indicator-based",
+  "strategy_name": "MA Crossover Strategy"
+}</pre>
+
+                    <p><strong>What the validation tool checks:</strong></p>
+                    <ul style="margin-left: 20px; color: #495057; line-height: 1.8;">
+                        <li>✓ All required fields are present (name, version, description, conditions, risk_management)</li>
+                        <li>✓ Field types are correct (strings, numbers, objects, arrays)</li>
+                        <li>✓ Condition syntax is valid (proper comparison operators)</li>
+                        <li>✓ Values are within acceptable ranges (pips: 1-1000, periods: 1-200)</li>
+                        <li>✓ Strategy type consistency (time-based vs indicator-based)</li>
+                        <li>✓ Indicator aliases match those used in conditions</li>
+                    </ul>
+
+                    <h3>💾 Step 2: Save Your Validated Strategy</h3>
+                    <p>Once validation succeeds, use the <code>save_dsl_strategy</code> MCP tool to save your strategy:</p>
+                    
+                    <div class="instructions" style="background: #d4edda; border-left-color: #28a745;">
+                        <h3 style="color: #155724;">Example Save Command:</h3>
+                        <pre class="prompt-template" id="save-example" style="background: white; margin-top: 10px;">Ask your AI assistant:
+
+"Please save this DSL strategy:
+[Paste your validated DSL JSON here]"
+
+Or with a custom filename:
+
+"Please save this DSL strategy with filename 'my_custom_strategy.json':
+[Paste your validated DSL JSON here]"</pre>
+                    </div>
+
+                    <h3>✅ Expected Save Output:</h3>
+                    <pre class="prompt-template" id="save-success-output">{
+  "success": true,
+  "file_path": "/path/to/shared/strategies/dsl_strategies/ma_crossover_strategy.json",
+  "message": "Strategy saved successfully"
+}</pre>
+
+                    <p><strong>What the save tool does:</strong></p>
+                    <ul style="margin-left: 20px; color: #495057; line-height: 1.8;">
+                        <li>✓ Validates the JSON before saving (automatic validation)</li>
+                        <li>✓ Generates a filename from the strategy name (sanitized, lowercase, underscores)</li>
+                        <li>✓ Saves to the <code>shared/strategies/dsl_strategies/</code> directory</li>
+                        <li>✓ Returns the full file path for confirmation</li>
+                        <li>✓ Makes the strategy immediately available to the backtest engine</li>
+                    </ul>
+
+                    <h3>🧪 Step 3: Backtest Your Strategy</h3>
+                    <p>Test your strategy with the backtest engine to verify it works correctly:</p>
+                    
+                    <div class="instructions" style="background: #e7f3ff; border-left-color: #2196F3;">
+                        <h3 style="color: #1976D2;">Example Backtest Command:</h3>
+                        <pre class="prompt-template" id="backtest-example" style="background: white; margin-top: 10px;">Ask your AI assistant:
+
+"Please run a backtest for the strategy 'MA Crossover Strategy' 
+on EURUSD for the last 30 days"
+
+Or with specific parameters:
+
+"Please backtest 'MA Crossover Strategy' on GBPUSD, 15m timeframe, 
+from 2024-11-01 to 2024-11-30, with 15 pip stop loss and 25 pip take profit"</pre>
+                    </div>
+
+                    <p><strong>The backtest will show:</strong></p>
+                    <ul style="margin-left: 20px; color: #495057; line-height: 1.8;">
+                        <li>✓ Total number of trades executed</li>
+                        <li>✓ Win rate and profit/loss in pips</li>
+                        <li>✓ Individual trade details (entry, exit, profit/loss)</li>
+                        <li>✓ Performance metrics (max drawdown, Sharpe ratio, etc.)</li>
+                        <li>✓ Interactive chart showing price action and trade signals</li>
+                    </ul>
+
+                    <h3>📚 Additional Tools</h3>
+                    <p>You can also list all available strategies:</p>
+                    <pre class="prompt-template" id="list-strategies-example">Ask your AI assistant:
+
+"Please list all available DSL strategies"
+
+This will show all saved strategies with their names, types, 
+versions, and descriptions.</pre>
+                </div>
+                <div class="stage-actions">
+                    <button class="btn btn-primary" onclick="copyPrompt('validation-example', this)">📋 Copy Validation Example</button>
+                    <button class="btn btn-primary" onclick="copyPrompt('save-example', this)">📋 Copy Save Example</button>
+                    <button class="btn btn-primary" onclick="copyPrompt('backtest-example', this)">📋 Copy Backtest Example</button>
+                    <button class="btn btn-success" onclick="markComplete(4, this)">✓ Mark Complete</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="navigation">
+            <button class="nav-btn" id="prev-btn" disabled>← Previous Stage</button>
+            <button class="nav-btn" id="next-btn">Next Stage →</button>
+        </div>
+
+        <footer>
+            <p>Transcript Strategy Builder v1.0 | Part of the Universal Backtest Engine</p>
+        </footer>
+    </div>
+
+    <script>
+        // Basic navigation functionality
+        let currentStage = 1;
+        const totalStages = 4;
+
+        // Load completion state from localStorage
+        function loadCompletionState() {
+            const completedStages = JSON.parse(localStorage.getItem('completedStages') || '[]');
+            completedStages.forEach(stageNum => {
+                const progressStep = document.querySelector(`.progress-step[data-stage="${stageNum}"]`);
+                if (progressStep) {
+                    progressStep.classList.add('completed');
+                }
+                
+                // Update button state for completed stages
+                const stage = document.getElementById(`stage-${stageNum}`);
+                if (stage) {
+                    const completeButton = stage.querySelector('.btn-success');
+                    if (completeButton) {
+                        completeButton.innerHTML = '✓ Completed!';
+                        completeButton.disabled = true;
+                    }
+                    
+                    // Add success message if not already present
+                    if (!stage.querySelector('.success-message')) {
+                        const successMsg = document.createElement('div');
+                        successMsg.className = 'success-message';
+                        successMsg.style.cssText = 'background: #d4edda; color: #155724; padding: 15px; border-radius: 6px; margin-top: 15px; border: 1px solid #c3e6cb;';
+                        successMsg.innerHTML = '<strong>✓ Stage completed!</strong> Progress saved.';
+                        stage.appendChild(successMsg);
+                    }
+                }
+            });
+        }
+
+        // Save completion state to localStorage
+        function saveCompletionState(stageNum) {
+            const completedStages = JSON.parse(localStorage.getItem('completedStages') || '[]');
+            if (!completedStages.includes(stageNum)) {
+                completedStages.push(stageNum);
+                localStorage.setItem('completedStages', JSON.stringify(completedStages));
+            }
+        }
+
+        // Check if stage is completed
+        function isStageCompleted(stageNum) {
+            const completedStages = JSON.parse(localStorage.getItem('completedStages') || '[]');
+            return completedStages.includes(stageNum);
+        }
+
+        // Reset all progress (for testing/debugging)
+        function resetProgress() {
+            if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+                localStorage.removeItem('completedStages');
+                location.reload();
+            }
+        }
+
+        // Copy prompt to clipboard
+        function copyPrompt(promptId, button) {
+            const promptElement = document.getElementById(promptId);
+            const text = promptElement.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.innerHTML;
+                button.innerHTML = '✓ Copied!';
+                button.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.style.background = '';
+                }, 2000);
+            }).catch(err => {
+                alert('Failed to copy to clipboard. Please copy manually.');
+                console.error('Copy failed:', err);
+            });
+        }
+
+        // Mark stage as complete
+        function markComplete(stageNum, button) {
+            // Prevent double-completion
+            if (isStageCompleted(stageNum)) {
+                return;
+            }
+            
+            const progressStep = document.querySelector(`.progress-step[data-stage="${stageNum}"]`);
+            if (progressStep) {
+                progressStep.classList.add('completed');
+                saveCompletionState(stageNum);
+                
+                button.innerHTML = '✓ Completed!';
+                button.disabled = true;
+                
+                // Show success message
+                const stage = document.getElementById(`stage-${stageNum}`);
+                if (!stage.querySelector('.success-message')) {
+                    const successMsg = document.createElement('div');
+                    successMsg.className = 'success-message';
+                    successMsg.style.cssText = 'background: #d4edda; color: #155724; padding: 15px; border-radius: 6px; margin-top: 15px; border: 1px solid #c3e6cb;';
+                    successMsg.innerHTML = '<strong>✓ Stage completed!</strong> You can now proceed to the next stage.';
+                    stage.appendChild(successMsg);
+                }
+                
+                // Auto-advance to next stage after 1.5 seconds
+                if (stageNum < totalStages) {
+                    setTimeout(() => {
+                        currentStage = stageNum + 1;
+                        updateNavigation();
+                    }, 1500);
+                }
+            }
+        }
+
+        function updateNavigation() {
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            
+            prevBtn.disabled = currentStage === 1;
+            nextBtn.disabled = currentStage === totalStages;
+            
+            // Update progress indicators
+            document.querySelectorAll('.progress-step').forEach((step, index) => {
+                const stageNum = index + 1;
+                step.classList.remove('active');
+                if (stageNum === currentStage) {
+                    step.classList.add('active');
+                }
+            });
+            
+            // Scroll to current stage
+            const stageElement = document.getElementById(`stage-${currentStage}`);
+            if (stageElement) {
+                stageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            if (currentStage > 1) {
+                currentStage--;
+                updateNavigation();
+            }
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            if (currentStage < totalStages) {
+                currentStage++;
+                updateNavigation();
+            }
+        });
+
+        // Allow clicking on progress steps to navigate
+        document.querySelectorAll('.progress-step').forEach((step, index) => {
+            step.style.cursor = 'pointer';
+            step.addEventListener('click', () => {
+                currentStage = index + 1;
+                updateNavigation();
+            });
+        });
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' && currentStage > 1) {
+                currentStage--;
+                updateNavigation();
+            } else if (e.key === 'ArrowRight' && currentStage < totalStages) {
+                currentStage++;
+                updateNavigation();
+            }
+        });
+
+        // Initialize
+        loadCompletionState();
+        updateNavigation();
+        
+        // Add reset button to footer (hidden by default, accessible via console)
+        window.resetProgress = resetProgress;
+    </script>
+</body>
+</html>

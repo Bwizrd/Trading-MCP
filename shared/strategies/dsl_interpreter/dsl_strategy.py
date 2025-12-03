@@ -159,19 +159,39 @@ class DSLStrategy(TradingStrategy):
         # Calculate full series for each indicator
         for indicator in self.dsl_config['indicators']:
             ind_type = indicator['type']
-            period = indicator['period']
             alias = indicator['alias']
             
             try:
-                if ind_type == 'SMA' and len(df) >= period:
-                    sma_series = ta.trend.sma_indicator(df['close'], window=period)
-                    indicator_series[f"{alias}"] = sma_series.fillna(0).tolist()
-                elif ind_type == 'EMA' and len(df) >= period:
-                    ema_series = ta.trend.ema_indicator(df['close'], window=period)
-                    indicator_series[f"{alias}"] = ema_series.fillna(0).tolist()
-                elif ind_type == 'RSI' and len(df) >= period:
-                    rsi_series = ta.momentum.rsi(df['close'], window=period)
-                    indicator_series[f"{alias}"] = rsi_series.fillna(0).tolist()
+                if ind_type == 'SMA':
+                    period = indicator['period']
+                    if len(df) >= period:
+                        sma_series = ta.trend.sma_indicator(df['close'], window=period)
+                        indicator_series[f"{alias}"] = sma_series.fillna(0).tolist()
+                elif ind_type == 'EMA':
+                    period = indicator['period']
+                    if len(df) >= period:
+                        ema_series = ta.trend.ema_indicator(df['close'], window=period)
+                        indicator_series[f"{alias}"] = ema_series.fillna(0).tolist()
+                elif ind_type == 'RSI':
+                    period = indicator['period']
+                    if len(df) >= period:
+                        rsi_series = ta.momentum.rsi(df['close'], window=period)
+                        indicator_series[f"{alias}"] = rsi_series.fillna(0).tolist()
+                elif ind_type == 'MACD':
+                    fast_period = indicator.get('fast_period', 12)
+                    slow_period = indicator.get('slow_period', 26)
+                    signal_period = indicator.get('signal_period', 9)
+                    
+                    if len(df) >= slow_period + signal_period:
+                        macd_indicator = ta.trend.MACD(
+                            df['close'],
+                            window_slow=slow_period,
+                            window_fast=fast_period,
+                            window_sign=signal_period
+                        )
+                        indicator_series[f"{alias}"] = macd_indicator.macd().fillna(0).tolist()
+                        indicator_series[f"{alias}_signal"] = macd_indicator.macd_signal().fillna(0).tolist()
+                        indicator_series[f"{alias}_histogram"] = macd_indicator.macd_diff().fillna(0).tolist()
             except Exception as e:
                 import logging
                 logging.warning(f"Error calculating {alias} series ({ind_type}): {e}")
@@ -599,19 +619,41 @@ class DSLStrategy(TradingStrategy):
         if 'indicators' in self.dsl_config:
             for indicator in self.dsl_config['indicators']:
                 ind_type = indicator['type']
-                period = indicator['period']
                 alias = indicator['alias']
                 
                 try:
-                    if ind_type == 'SMA' and len(df) >= period:
-                        sma = ta.trend.sma_indicator(df['close'], window=period)
-                        self.indicator_values[alias] = float(sma.iloc[-1])
-                    elif ind_type == 'EMA' and len(df) >= period:
-                        ema = ta.trend.ema_indicator(df['close'], window=period)
-                        self.indicator_values[alias] = float(ema.iloc[-1])
-                    elif ind_type == 'RSI' and len(df) >= period:
-                        rsi = ta.momentum.rsi(df['close'], window=period)
-                        self.indicator_values[alias] = float(rsi.iloc[-1])
+                    if ind_type == 'SMA':
+                        period = indicator['period']
+                        if len(df) >= period:
+                            sma = ta.trend.sma_indicator(df['close'], window=period)
+                            self.indicator_values[alias] = float(sma.iloc[-1])
+                    elif ind_type == 'EMA':
+                        period = indicator['period']
+                        if len(df) >= period:
+                            ema = ta.trend.ema_indicator(df['close'], window=period)
+                            self.indicator_values[alias] = float(ema.iloc[-1])
+                    elif ind_type == 'RSI':
+                        period = indicator['period']
+                        if len(df) >= period:
+                            rsi = ta.momentum.rsi(df['close'], window=period)
+                            self.indicator_values[alias] = float(rsi.iloc[-1])
+                    elif ind_type == 'MACD':
+                        # MACD has optional parameters
+                        fast_period = indicator.get('fast_period', 12)
+                        slow_period = indicator.get('slow_period', 26)
+                        signal_period = indicator.get('signal_period', 9)
+                        
+                        if len(df) >= slow_period + signal_period:
+                            macd_indicator = ta.trend.MACD(
+                                df['close'],
+                                window_slow=slow_period,
+                                window_fast=fast_period,
+                                window_sign=signal_period
+                            )
+                            # Store MACD line, signal line, and histogram
+                            self.indicator_values[alias] = float(macd_indicator.macd().iloc[-1])
+                            self.indicator_values[f"{alias}_signal"] = float(macd_indicator.macd_signal().iloc[-1])
+                            self.indicator_values[f"{alias}_histogram"] = float(macd_indicator.macd_diff().iloc[-1])
                 except Exception as e:
                     # Log warning instead of printing to avoid JSON contamination
                     import logging

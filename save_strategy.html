@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DSL Strategy Saver</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .subtitle {
+            color: #718096;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 300px;
+            padding: 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-validate {
+            background: #4299e1;
+            color: white;
+        }
+
+        .btn-validate:hover {
+            background: #3182ce;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(66, 153, 225, 0.4);
+        }
+
+        .btn-save {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-save:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-save:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result.success {
+            background: #c6f6d5;
+            border: 2px solid #48bb78;
+            color: #22543d;
+        }
+
+        .result.error {
+            background: #fed7d7;
+            border: 2px solid #f56565;
+            color: #742a2a;
+        }
+
+        .result.info {
+            background: #bee3f8;
+            border: 2px solid #4299e1;
+            color: #2c5282;
+        }
+
+        .result h3 {
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .result ul {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+
+        .result li {
+            margin: 5px 0;
+        }
+
+        .result pre {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            overflow-x: auto;
+        }
+
+        .examples {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+
+        .examples h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        .example-btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border-radius: 5px;
+            margin: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .example-btn:hover {
+            background: #5a67d8;
+        }
+
+        .hint {
+            background: #fef5e7;
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            color: #7d6608;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 DSL Strategy Saver</h1>
+        <p class="subtitle">Validate and save your trading strategy JSON files</p>
+
+        <div class="section">
+            <label for="strategyJson">📝 Paste Your DSL Strategy JSON:</label>
+            <textarea id="strategyJson" placeholder='Paste your DSL JSON here, for example:
+{
+  "name": "MACD Crossover Strategy",
+  "version": "1.0.0",
+  "description": "MACD signal line crossover strategy",
+  "indicators": [
+    {"type": "MACD", "alias": "macd"}
+  ],
+  "conditions": {
+    "buy": {"compare": "macd > macd_signal", "crossover": true},
+    "sell": {"compare": "macd < macd_signal", "crossover": true}
+  },
+  "risk_management": {
+    "stop_loss_pips": 25,
+    "take_profit_pips": 40
+  }
+}'></textarea>
+        </div>
+
+        <div class="section">
+            <label for="filename">💾 Filename (optional):</label>
+            <input type="text" id="filename" placeholder="Leave empty to auto-generate from strategy name">
+        </div>
+
+        <div class="button-group">
+            <button class="btn-validate" onclick="validateStrategy()">🔍 Validate</button>
+            <button class="btn-save" id="saveBtn" onclick="saveStrategy()" disabled>💾 Download JSON File</button>
+        </div>
+
+        <div id="result" class="result"></div>
+
+        <div class="hint">
+            <strong>💡 How to use:</strong>
+            <ol style="margin-left: 20px; margin-top: 10px;">
+                <li>Paste your DSL JSON in the text area above</li>
+                <li>Click "Validate" to check if it's correct</li>
+                <li>If valid, click "Download JSON File" to save it</li>
+                <li>Place the downloaded file in: <code>shared/strategies/dsl_strategies/</code></li>
+                <li>The strategy will be automatically discovered by the backtest engine</li>
+            </ol>
+        </div>
+
+        <div class="examples">
+            <h3>📚 Quick Examples:</h3>
+            <span class="example-btn" onclick="loadExample('macd')">MACD Crossover</span>
+            <span class="example-btn" onclick="loadExample('ma')">MA Crossover</span>
+            <span class="example-btn" onclick="loadExample('rsi')">RSI Strategy</span>
+            <span class="example-btn" onclick="loadExample('time')">Time-Based</span>
+        </div>
+    </div>
+
+    <script>
+        let validatedJson = null;
+
+        const examples = {
+            macd: {
+                "name": "MACD Crossover Strategy",
+                "version": "1.0.0",
+                "description": "MACD signal line crossover strategy for trend following",
+                "indicators": [
+                    {"type": "MACD", "alias": "macd"}
+                ],
+                "conditions": {
+                    "buy": {"compare": "macd > macd_signal", "crossover": true},
+                    "sell": {"compare": "macd < macd_signal", "crossover": true}
+                },
+                "risk_management": {
+                    "stop_loss_pips": 25,
+                    "take_profit_pips": 40,
+                    "max_daily_trades": 5
+                }
+            },
+            ma: {
+                "name": "MA Crossover Strategy",
+                "version": "1.0.0",
+                "description": "Moving Average Crossover using SMA 20 and SMA 50",
+                "indicators": [
+                    {"type": "SMA", "period": 20, "alias": "fast_ma"},
+                    {"type": "SMA", "period": 50, "alias": "slow_ma"}
+                ],
+                "conditions": {
+                    "buy": {"compare": "fast_ma > slow_ma", "crossover": true},
+                    "sell": {"compare": "fast_ma < slow_ma", "crossover": true}
+                },
+                "risk_management": {
+                    "stop_loss_pips": 20,
+                    "take_profit_pips": 30,
+                    "max_daily_trades": 3
+                }
+            },
+            rsi: {
+                "name": "RSI Oversold Overbought",
+                "version": "1.0.0",
+                "description": "Buy when RSI < 30, Sell when RSI > 70",
+                "indicators": [
+                    {"type": "RSI", "period": 14, "alias": "rsi"}
+                ],
+                "conditions": {
+                    "buy": {"compare": "rsi < 30", "crossover": false},
+                    "sell": {"compare": "rsi > 70", "crossover": false}
+                },
+                "risk_management": {
+                    "stop_loss_pips": 15,
+                    "take_profit_pips": 25,
+                    "max_daily_trades": 5
+                }
+            },
+            time: {
+                "name": "10am vs 9:30am Price Compare",
+                "version": "1.0.0",
+                "description": "Buy if 10am price > 9:30am close, Sell if lower",
+                "timing": {
+                    "reference_time": "09:30",
+                    "reference_price": "close",
+                    "signal_time": "10:00"
+                },
+                "conditions": {
+                    "buy": {"compare": "signal_price > reference_price"},
+                    "sell": {"compare": "signal_price < reference_price"}
+                },
+                "risk_management": {
+                    "stop_loss_pips": 15,
+                    "take_profit_pips": 25,
+                    "max_daily_trades": 1
+                }
+            }
+        };
+
+        function loadExample(type) {
+            const example = examples[type];
+            document.getElementById('strategyJson').value = JSON.stringify(example, null, 2);
+            showResult('info', 'Example Loaded', `${example.name} example has been loaded. Click "Validate" to check it.`);
+            document.getElementById('saveBtn').disabled = true;
+            validatedJson = null;
+        }
+
+        function validateStrategy() {
+            const jsonText = document.getElementById('strategyJson').value.trim();
+            
+            if (!jsonText) {
+                showResult('error', 'Validation Failed', 'Please paste a DSL strategy JSON first.');
+                return;
+            }
+
+            try {
+                const strategy = JSON.parse(jsonText);
+                
+                // Basic validation
+                const errors = [];
+                
+                // Check required fields
+                if (!strategy.name) errors.push('Missing required field: name');
+                if (!strategy.version) errors.push('Missing required field: version');
+                if (!strategy.description) errors.push('Missing required field: description');
+                if (!strategy.conditions) errors.push('Missing required field: conditions');
+                if (!strategy.risk_management) errors.push('Missing required field: risk_management');
+                
+                // Check strategy type
+                const hasIndicators = strategy.indicators && strategy.indicators.length > 0;
+                const hasTiming = strategy.timing && Object.keys(strategy.timing).length > 0;
+                
+                if (!hasIndicators && !hasTiming) {
+                    errors.push('Strategy must have either "indicators" (indicator-based) or "timing" (time-based)');
+                }
+                
+                if (hasIndicators && hasTiming) {
+                    errors.push('Strategy cannot have both "indicators" and "timing" - must be one type');
+                }
+                
+                // Check conditions
+                if (strategy.conditions) {
+                    if (!strategy.conditions.buy) errors.push('Missing buy condition');
+                    if (!strategy.conditions.sell) errors.push('Missing sell condition');
+                }
+                
+                // Check risk management
+                if (strategy.risk_management) {
+                    if (!strategy.risk_management.stop_loss_pips) errors.push('Missing stop_loss_pips in risk_management');
+                    if (!strategy.risk_management.take_profit_pips) errors.push('Missing take_profit_pips in risk_management');
+                }
+                
+                if (errors.length > 0) {
+                    showResult('error', 'Validation Failed', 'Please fix the following errors:', errors);
+                    document.getElementById('saveBtn').disabled = true;
+                    validatedJson = null;
+                } else {
+                    const strategyType = hasIndicators ? 'indicator-based' : 'time-based';
+                    validatedJson = strategy;
+                    showResult('success', 'Validation Successful! ✅', 
+                        `Strategy "${strategy.name}" is valid and ready to save.<br>` +
+                        `Type: ${strategyType}<br>` +
+                        `Version: ${strategy.version}`
+                    );
+                    document.getElementById('saveBtn').disabled = false;
+                }
+                
+            } catch (e) {
+                showResult('error', 'Invalid JSON', `JSON parsing error: ${e.message}`);
+                document.getElementById('saveBtn').disabled = true;
+                validatedJson = null;
+            }
+        }
+
+        function saveStrategy() {
+            if (!validatedJson) {
+                showResult('error', 'No Valid Strategy', 'Please validate your strategy first.');
+                return;
+            }
+
+            // Generate filename
+            let filename = document.getElementById('filename').value.trim();
+            if (!filename) {
+                // Auto-generate from strategy name
+                filename = validatedJson.name
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '_')
+                    .replace(/^_+|_+$/g, '');
+            }
+            
+            // Ensure .json extension
+            if (!filename.endsWith('.json')) {
+                filename += '.json';
+            }
+
+            // Create download
+            const jsonString = JSON.stringify(validatedJson, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showResult('success', 'File Downloaded! 📥', 
+                `Strategy saved as: <strong>${filename}</strong><br><br>` +
+                `<strong>Next steps:</strong><br>` +
+                `1. Move the downloaded file to: <code>shared/strategies/dsl_strategies/</code><br>` +
+                `2. The strategy will be automatically discovered<br>` +
+                `3. Run a backtest using the universal-backtest-engine`
+            );
+        }
+
+        function showResult(type, title, message, list = null) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            
+            let html = `<h3>${title}</h3><p>${message}</p>`;
+            
+            if (list && list.length > 0) {
+                html += '<ul>';
+                list.forEach(item => {
+                    html += `<li>${item}</li>`;
+                });
+                html += '</ul>';
+            }
+            
+            resultDiv.innerHTML = html;
+            resultDiv.style.display = 'block';
+            
+            // Scroll to result
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    </script>
+</body>
+</html>

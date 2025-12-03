@@ -1,0 +1,25 @@
+{
+  "name": "MACD Crossover Strategy",
+  "version": "1.0.0",
+  "description": "MACD signal line crossover strategy",
+  "indicators": [
+    {
+      "type": "MACD",
+      "alias": "macd"
+    }
+  ],
+  "conditions": {
+    "buy": {
+      "compare": "macd > macd_signal",
+      "crossover": true
+    },
+    "sell": {
+      "compare": "macd < macd_signal",
+      "crossover": true
+    }
+  },
+  "risk_management": {
+    "stop_loss_pips": 25,
+    "take_profit_pips": 40
+  }
+}

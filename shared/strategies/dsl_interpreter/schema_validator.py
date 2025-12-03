@@ -406,8 +406,8 @@ def _validate_indicators_configuration(config: Dict[str, Any]) -> None:
     if not isinstance(indicators, list) or len(indicators) == 0:
         raise ValueError("'indicators' must be a non-empty list")
     
-    required_indicator_fields = ["type", "period", "alias"]
-    valid_indicator_types = ["SMA", "EMA", "RSI"]
+    required_indicator_fields = ["type", "alias"]
+    valid_indicator_types = ["SMA", "EMA", "RSI", "MACD"]
     
     aliases = set()
     for i, indicator in enumerate(indicators):
@@ -420,9 +420,21 @@ def _validate_indicators_configuration(config: Dict[str, Any]) -> None:
         if indicator["type"] not in valid_indicator_types:
             raise ValueError(f"Indicator {i}: Invalid type '{indicator['type']}'. Must be one of: {valid_indicator_types}")
         
-        # Validate period
-        if not isinstance(indicator["period"], int) or indicator["period"] < 1 or indicator["period"] > 200:
-            raise ValueError(f"Indicator {i}: 'period' must be an integer between 1 and 200")
+        # Validate period (required for SMA, EMA, RSI but not MACD)
+        if indicator["type"] in ["SMA", "EMA", "RSI"]:
+            if "period" not in indicator:
+                raise ValueError(f"Indicator {i}: '{indicator['type']}' requires 'period' field")
+            if not isinstance(indicator["period"], int) or indicator["period"] < 1 or indicator["period"] > 200:
+                raise ValueError(f"Indicator {i}: 'period' must be an integer between 1 and 200")
+        
+        # Validate MACD-specific fields
+        if indicator["type"] == "MACD":
+            # MACD can have optional fast_period, slow_period, signal_period
+            # If not provided, defaults will be used (12, 26, 9)
+            for period_field in ["fast_period", "slow_period", "signal_period"]:
+                if period_field in indicator:
+                    if not isinstance(indicator[period_field], int) or indicator[period_field] < 1:
+                        raise ValueError(f"Indicator {i}: '{period_field}' must be a positive integer")
         
         # Validate alias
         if not isinstance(indicator["alias"], str) or len(indicator["alias"]) < 1:
