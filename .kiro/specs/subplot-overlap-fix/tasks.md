@@ -114,35 +114,35 @@
   - Use these findings to inform the implementation of tasks 1-10
   - _Requirements: All_
 
-- [ ] 1. Rewrite `create_comprehensive_chart()` using POC approach
+- [x] 1. Rewrite `create_comprehensive_chart()` using POC approach
   - Replace the entire subplot creation section with POC-based implementation
   - Copy the working spacing and height calculation logic directly from POC
   - Keep the existing indicator routing and rendering logic intact
   - Use simple, inline calculations instead of complex method calls
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2_
 
-- [ ] 1.1 Extract and adapt POC spacing calculation
+- [x] 1.1 Extract and adapt POC spacing calculation
   - Copy the spacing calculation from poc_subplot_spacing.py
   - Adapt it to use the actual num_rows from the chart layout
   - Use exact POC formula: 2 rows=0.12, 3 rows=0.10, 4 rows=0.08, 5+ rows=0.06
   - Keep it inline and simple - no separate method calls initially
   - _Requirements: 1.1, 1.4_
 
-- [ ] 1.2 Extract and adapt POC height calculation
+- [x] 1.2 Extract and adapt POC height calculation
   - Copy the height calculation logic from poc_subplot_spacing.py
   - Calculate available_space = 1.0 - (num_rows - 1) * spacing
   - Allocate heights from available space (price 45%, oscillators 35%, volume 10%, P&L 10%)
   - Build heights list exactly as POC does
   - _Requirements: 2.1, 2.2, 2.4_
 
-- [ ] 1.3 Replace make_subplots call with POC version
+- [x] 1.3 Replace make_subplots call with POC version
   - Remove the current make_subplots call and all its complexity
   - Use the simple POC version: make_subplots(rows=num_rows, cols=1, row_heights=heights, vertical_spacing=spacing, subplot_titles=titles, shared_xaxes=True)
   - Remove the specs parameter that POC doesn't use
   - Remove complex error handling initially - keep it simple
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 1.4 Test the rewritten chart creation
+- [x] 1.4 Test the rewritten chart creation
   - Run a backtest with MACD strategy
   - Verify the chart generates without errors
   - Check that spacing is now correct (no overlaps)
@@ -200,222 +200,116 @@
   - Verify fallback works if needed
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 3. Add LayoutConfiguration data model
-  - Create a dataclass to encapsulate layout configuration
-  - Add validation method to the dataclass
-  - Use this model throughout the chart engine for type safety
-  - _Requirements: 2.1, 2.2, 2.5_
-
-- [ ] 3.1 Create LayoutConfiguration dataclass
-  - Add dataclass with fields: num_rows, row_mapping, row_heights, vertical_spacing, subplot_titles
-  - Import dataclass decorator from dataclasses module
-  - Add type hints for all fields
-  - _Requirements: 2.1, 2.2_
-
-- [ ] 3.2 Implement `validate()` method on LayoutConfiguration
-  - Add method that checks mathematical correctness of the configuration
-  - Verify sum(row_heights) + (num_rows-1)*vertical_spacing ≤ 1.0
-  - Verify all row_heights are positive
-  - Return tuple of (is_valid, error_message)
-  - _Requirements: 2.1, 2.2, 2.5_
-
-- [ ] 3.3 Implement `total_allocated_space()` helper method
-  - Add method that calculates total space used by heights and spacing
-  - Return sum(row_heights) + (num_rows-1)*vertical_spacing
-  - Use this in validation logic
-  - _Requirements: 2.2_
-
-- [ ]* 3.4 Write unit tests for LayoutConfiguration
-  - Test validation with valid configurations (should pass)
-  - Test validation with invalid configurations (should fail)
-  - Test total_allocated_space calculation
-  - _Requirements: 2.1, 2.2, 2.5_
-
-- [ ] 3.5 Checkpoint - Run backtest and generate chart
-  - Run a backtest with MACD strategy to generate a chart
-  - Verify that LayoutConfiguration dataclass is being used
-  - Check logs for validation messages
-  - Compare chart with previous checkpoint
-  - Save chart with timestamp for comparison
-
-- [ ] 4. Implement visual debugging features
-  - Add optional debug mode that shows subplot boundaries
-  - Add method to draw spacing indicators on charts
-  - Make debug mode configurable via parameter
-  - _Requirements: 3.5_
-
-- [ ] 4.1 Add `_add_debug_spacing_indicators()` method
-  - Add method that draws colored rectangles in spacing gaps
-  - Add text annotations showing spacing measurements
-  - Only execute when debug parameter is True
-  - _Requirements: 3.5_
-
-- [ ] 4.2 Add debug parameter to `create_comprehensive_chart()`
-  - Add optional debug parameter (default False)
-  - Pass debug flag through to _add_debug_spacing_indicators
-  - Document the debug parameter in docstring
-  - _Requirements: 3.5_
-
-- [ ] 4.3 Update chart title to indicate debug mode
-  - When debug=True, add "[DEBUG MODE]" to chart title
-  - Make debug indicators visually distinct (bright colors)
-  - _Requirements: 3.5_
-
-- [ ] 4.4 Checkpoint - Run backtest with debug mode enabled
-  - Run a backtest with MACD strategy and debug=True
-  - Verify that debug spacing indicators are visible on the chart
-  - Check that spacing measurements are displayed
-  - Compare with non-debug chart to see the visual indicators
-  - Save chart with timestamp for comparison
-
-- [ ] 5. Add comprehensive logging
-  - Add detailed logging for all layout calculations
-  - Log configuration values before subplot creation
-  - Log validation results and any fallback actions
-  - _Requirements: 3.1, 3.2, 3.3, 3.4_
-
-- [ ] 5.1 Add logging to `_calculate_vertical_spacing()`
-  - Log the number of rows and calculated spacing value
-  - Use INFO level for normal operation
-  - _Requirements: 3.1_
-
-- [ ] 5.2 Add logging to `_calculate_row_heights_with_spacing()`
-  - Log the layout configuration and spacing input
-  - Log the calculated heights and their sum
-  - Log the available space calculation
-  - Use INFO level for normal operation
-  - _Requirements: 3.1_
-
-- [ ] 5.3 Add logging to `_validate_layout_math()`
-  - Log validation checks and their results
-  - Use WARNING level for validation failures
-  - Include specific details about what failed
-  - _Requirements: 3.3_
-
-- [ ] 5.4 Add logging to error handling in `create_comprehensive_chart()`
-  - Log detailed error information when subplot creation fails
-  - Log the exact configuration that was attempted
-  - Log fallback actions with reason
-  - Use ERROR level for failures
-  - _Requirements: 3.2, 3.4_
-
-- [ ] 5.5 Checkpoint - Run backtest and review logs
-  - Run a backtest with MACD strategy
-  - Review the log output for all layout calculations
-  - Verify that spacing, heights, and validation results are logged
-  - Check that log messages are clear and informative
-  - Save chart and logs with timestamp for comparison
-
-- [ ] 6. Write integration tests
-  - Create tests that generate charts with various configurations
-  - Verify charts render without errors
-  - Verify visual spacing is correct
+- [ ] 3. Write integration tests
+  - Create tests that verify charts render correctly with various configurations
+  - Test 2-row, 4-row, and 6-row layouts
+  - Verify spacing is appropriate for each
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 6.1 Write test for 2-row layout (price + P&L)
+- [ ] 3.1 Write test for 2-row layout (price + P&L)
   - Generate chart with simple 2-row configuration
   - Verify chart renders successfully
   - Verify spacing is visible (0.12)
   - Save chart for manual inspection
   - _Requirements: 1.1, 1.2_
 
-- [ ] 6.2 Write test for 4-row layout (price + MACD + volume + P&L)
+- [ ] 3.2 Write test for 4-row layout (price + MACD + volume + P&L)
   - Generate chart with MACD indicator
   - Verify all 4 subplots are clearly separated
   - Verify spacing is appropriate (0.08)
   - Save chart for manual inspection
   - _Requirements: 1.1, 1.2, 1.4_
 
-- [ ] 6.3 Write test for 6-row layout (price + 3 oscillators + volume + P&L)
+- [ ] 3.3 Write test for 6-row layout (price + 3 oscillators + volume + P&L)
   - Generate chart with multiple oscillators
   - Verify all oscillators get equal space
   - Verify spacing is tighter but still visible (0.06)
   - Save chart for manual inspection
   - _Requirements: 1.1, 1.2, 1.4, 2.4_
 
-- [ ]* 6.4 Write test for edge cases
-  - Test with 1 row (edge case)
-  - Test with 10 rows (stress test)
-  - Test with no indicators (fallback to simple layout)
-  - Verify graceful handling of all cases
-  - _Requirements: 1.4, 2.5_
+- [ ] 3.4 Run integration tests and verify results
+  - Execute all integration tests
+  - Review generated charts visually
+  - Verify spacing is correct in all cases
+  - Compare with POC charts to confirm similarity
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 6.5 Checkpoint - Run integration tests and review results
-  - Execute all integration tests (6.1, 6.2, 6.3)
-  - Review generated charts for 2-row, 4-row, and 6-row layouts
-  - Verify that spacing is appropriate for each configuration
-  - Compare charts side-by-side to verify consistency
-  - Save all charts with timestamps for comparison
-
-- [ ] 7. Update existing tests to work with new layout system
-  - Review all existing chart tests
-  - Update any tests that make assumptions about old layout calculations
+- [ ] 4. Update existing tests if needed
+  - Review existing chart tests for compatibility
+  - Update any tests that make assumptions about old layout
   - Ensure all tests pass with new implementation
   - _Requirements: All_
 
-- [ ] 7.1 Update test_subplot_layout.py
-  - Review tests for compatibility with new layout methods
-  - Update any hardcoded spacing or height values
-  - Ensure tests verify the new mathematical model
+- [ ] 4.1 Check and update test_subplot_layout.py
+  - Review tests for compatibility with new layout
+  - Update any hardcoded spacing or height values if needed
+  - Ensure tests pass
   - _Requirements: 2.1, 2.2_
 
-- [ ] 7.2 Update test_macd_visualization.py
+- [ ] 4.2 Check and update test_macd_visualization.py
   - Ensure MACD chart tests work with new spacing
-  - Verify MACD subplot is properly separated
-  - Update any assertions about subplot positions
+  - Update any assertions about subplot positions if needed
+  - Ensure tests pass
   - _Requirements: 1.2, 1.4_
 
-- [ ] 7.3 Run full test suite and fix any failures
+- [ ] 4.3 Run full test suite
   - Execute all chart-related tests
   - Fix any tests broken by the layout changes
-  - Ensure 100% test pass rate before completion
+  - Ensure 100% test pass rate
   - _Requirements: All_
 
-- [ ] 7.4 Checkpoint - Run backtest after test updates
-  - Run a backtest with MACD strategy
-  - Verify that all existing functionality still works
-  - Check that no regressions were introduced
-  - Compare chart with previous checkpoints
-  - Save chart with timestamp for comparison
-
-- [ ] 8. Checkpoint - Ensure all tests pass
+- [ ] 5. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Documentation and cleanup
-  - Update docstrings for all modified methods
-  - Add inline comments explaining the mathematical model
-  - Update any relevant documentation files
+- [ ] 6. Documentation and cleanup
+  - Add inline comments explaining the POC-based approach
+  - Update docstrings for modified methods
+  - Document the spacing formula
   - _Requirements: All_
 
-- [ ] 9.1 Update method docstrings
-  - Add detailed docstrings to all new methods
-  - Explain the mathematical formulas used
-  - Include examples of input/output
-  - _Requirements: All_
-
-- [ ] 9.2 Add inline comments for complex calculations
-  - Comment the space conservation formula
-  - Explain the height distribution logic
-  - Document any non-obvious design decisions
+- [ ] 6.1 Add inline comments to spacing calculation
+  - Comment the spacing formula from POC
+  - Explain why these specific values work
+  - Reference the POC file
   - _Requirements: 2.1, 2.2_
 
-- [ ] 9.3 Create or update architecture documentation
-  - Document the new layout calculation system
-  - Explain the relationship between heights and spacing
-  - Include diagrams if helpful
+- [ ] 6.2 Add inline comments to height calculation
+  - Comment the available space calculation
+  - Explain the height distribution percentages
+  - Reference the POC file
+  - _Requirements: 2.1, 2.2_
+
+- [ ] 6.3 Update method docstring for create_comprehensive_chart
+  - Document the POC-based approach
+  - Explain the spacing and height calculation
+  - Note that this fixes the overlap issue
   - _Requirements: All_
 
-- [ ] 9.4 Checkpoint - Run backtest after documentation
-  - Run a backtest with MACD strategy
-  - Verify that all documentation is accurate
-  - Generate final chart showing the fixed spacing
-  - Compare with the very first chart to show before/after improvement
-  - Save chart with timestamp for comparison
-
-- [ ] 10. Final checkpoint - Verify fix with real backtest
-  - Run multiple backtests with different strategies (MACD, RSI, multiple oscillators)
-  - Verify that all charts have proper spacing with no overlaps
+- [ ] 7. Final verification with multiple strategies
+  - Run backtests with different strategies and configurations
+  - Verify all charts have proper spacing
   - Test with different timeframes and symbols
-  - Confirm that the subplot overlap issue is completely resolved
-  - Save all final charts for documentation
+  - Confirm the subplot overlap issue is completely resolved
+  - _Requirements: All_
+
+- [ ] 7.1 Test with MACD strategy
+  - Run backtest with MACD on EURUSD 15m
+  - Verify 4-row layout (price + MACD + volume + P&L) has proper spacing
+  - Save chart for documentation
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+
+- [ ] 7.2 Test with multiple oscillators
+  - Run backtest with strategy that has 3+ oscillators
+  - Verify 6+ row layout has proper spacing
+  - Verify all oscillators get equal space
+  - Save chart for documentation
+  - _Requirements: 1.1, 1.2, 1.4, 2.4_
+
+- [ ] 7.3 Test with simple strategy (no oscillators)
+  - Run backtest with strategy that has no oscillators
+  - Verify 3-row layout (price + volume + P&L) has proper spacing
+  - Save chart for documentation
+  - _Requirements: 1.1, 1.2_
+
+- [ ] 8. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.

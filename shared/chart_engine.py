@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Modular Chart Engine
+Modular Chart Engine - POC REWRITE VERSION 2025-12-05
 
 Pure visualization engine that receives backtest results and creates charts.
 NO STRATEGY LOGIC - only consumes results from the Universal Backtest Engine.
 
 Architecture:
 Strategy Cartridges → Backtest Engine → Chart Engine → HTML/PNG Charts
+
+🔧 REWRITE STATUS: Using POC spacing calculation (poc_subplot_spacing.py)
 """
 
 import sys
@@ -354,6 +356,9 @@ class ChartEngine:
         """
         logger.info(f"Creating comprehensive chart with {len(candles)} candles and {len(backtest_results.trades)} trades")
         
+        # 🔧 DEBUG: Add obvious marker to title to confirm we're using the rewritten version
+        title = f"🔧 POC REWRITE - {title}"
+        
         # Convert candles to DataFrame for easier processing
         df = self._candles_to_dataframe(candles)
         
@@ -365,18 +370,21 @@ class ChartEngine:
             total_rows = max(layout.values())
             
             # Calculate appropriate vertical spacing based on number of rows
-            # These values are from the POC validation
-            if total_rows == 2:
-                v_spacing = 0.12  # 12% spacing for 2 rows
+            # EXACT FORMULA FROM POC (poc_subplot_spacing.py)
+            # This spacing calculation is proven to work correctly
+            if total_rows <= 1:
+                spacing = 0.0
+            elif total_rows == 2:
+                spacing = 0.12  # 12% spacing for 2 rows
             elif total_rows == 3:
-                v_spacing = 0.10  # 10% spacing for 3 rows
+                spacing = 0.10  # 10% spacing for 3 rows
             elif total_rows == 4:
-                v_spacing = 0.08  # 8% spacing for 4 rows (price + MACD + volume + P&L)
-            else:
-                v_spacing = 0.06  # 6% spacing for 5+ rows
+                spacing = 0.08  # 8% spacing for 4 rows
+            else:  # 5 or more rows
+                spacing = 0.06  # 6% spacing for 5+ rows
             
             # Calculate row heights accounting for spacing (CRITICAL FIX!)
-            row_heights = self._calculate_row_heights(layout, v_spacing)
+            row_heights = self._calculate_row_heights(layout, spacing)
             
             # Store layout for use in _add_indicators
             self._current_layout = layout
@@ -385,7 +393,7 @@ class ChartEngine:
             subplot_titles = self._generate_subplot_titles(layout, title, indicators)
             
             logger.info(f"Creating chart with {total_rows} rows: {list(layout.keys())}")
-            logger.info(f"Vertical spacing: {v_spacing:.3f}")
+            logger.info(f"Vertical spacing: {spacing:.3f}")
             logger.info(f"Row heights: {[f'{h:.4f}' for h in row_heights]}")
             logger.info(f"Subplot titles: {subplot_titles}")
             
@@ -394,25 +402,21 @@ class ChartEngine:
             # Fallback to simple 2-row layout (price + P&L)
             layout = {"price": 1, "pnl": 2}
             total_rows = 2
-            v_spacing = 0.12
-            row_heights = self._calculate_row_heights(layout, v_spacing)
+            spacing = 0.12
+            row_heights = self._calculate_row_heights(layout, spacing)
             subplot_titles = [f"{title} - Price Action", "Cumulative P&L"]
             self._current_layout = layout
         
         # Create subplots with error handling
+        # Using POC approach: simple, direct call without specs parameter
         try:
-            
-            # Create specs for each row (required for proper spacing)
-            specs = [[{"type": "xy"}] for _ in range(total_rows)]
-            
             fig = make_subplots(
                 rows=total_rows,
                 cols=1,
-                shared_xaxes=True,
-                vertical_spacing=v_spacing,
-                subplot_titles=subplot_titles,
                 row_heights=row_heights,
-                specs=specs
+                vertical_spacing=spacing,
+                subplot_titles=subplot_titles,
+                shared_xaxes=True
             )
         except Exception as e:
             logger.error(f"Error creating subplots with {total_rows} rows: {e}. Falling back to simple 2-row layout.")
@@ -1462,7 +1466,7 @@ class ChartEngine:
         """Update chart layout with styling and annotations."""
         fig.update_layout(
             title={
-                'text': f"🔧 SPACING FIX TEST 🔧 {title}",
+                'text': f"🔧 POC REWRITE v2 🔧 {title}",
                 'x': 0.5,
                 'font': {'size': 20}
             },
@@ -1470,6 +1474,7 @@ class ChartEngine:
             showlegend=True,
             height=1400,  # Increased from 1000 to give more vertical space
             hovermode='x unified',
+            xaxis_rangeslider_visible=False,  # POC approach: disable globally
             margin=dict(t=100, b=50, l=80, r=80)  # Explicit margins, reduced bottom since no range slider
         )
         
