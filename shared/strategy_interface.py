@@ -335,6 +335,9 @@ class BacktestResults:
     # Market data (for chart generation)
     market_data: Optional[List['Candle']] = None
     
+    # Indicators (for chart generation)
+    indicators: Optional[Dict[str, List[float]]] = None
+    
     def to_dict(self, include_market_data: bool = True) -> Dict[str, Any]:
         """Convert results to dictionary for JSON serialization."""
         result = {
@@ -379,7 +382,7 @@ class BacktestResults:
         }
         
         # Include market data if requested
-        if include_market_data and hasattr(self, 'market_data'):
+        if include_market_data and hasattr(self, 'market_data') and self.market_data:
             result["market_data"] = [
                 {
                     "timestamp": candle.timestamp.isoformat(),
@@ -390,5 +393,9 @@ class BacktestResults:
                     "volume": candle.volume
                 } for candle in self.market_data
             ]
+        
+        # Include indicators if available
+        if hasattr(self, 'indicators') and self.indicators:
+            result["indicators"] = self.indicators
             
         return result

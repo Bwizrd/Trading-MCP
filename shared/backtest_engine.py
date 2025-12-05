@@ -12,6 +12,8 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 import logging
+import os
+from pathlib import Path
 
 from shared.models import Candle, Trade, TradeDirection, TradeResult
 from shared.strategy_interface import (
@@ -21,7 +23,38 @@ from shared.strategy_interface import (
 from shared.indicators import indicator_registry, IndicatorRegistry
 from shared.data_connector import DataConnector
 
+# Configure logging
 logger = logging.getLogger(__name__)
+
+# Set up file handler if not already configured
+if not logger.handlers:
+    logger.setLevel(logging.DEBUG)
+    
+    # Try to create logs directory, but don't fail if we can't
+    try:
+        log_dir = Path(__file__).parent.parent / "logs"
+        log_dir.mkdir(exist_ok=True)
+        
+        # File handler
+        file_handler = logging.FileHandler(log_dir / 'backtest_engine.log')
+        file_handler.setLevel(logging.DEBUG)
+        
+        # Formatter
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        # Add file handler
+        logger.addHandler(file_handler)
+    except (OSError, PermissionError) as e:
+        # If we can't create log file, just use console logging
+        pass
+    
+    # Console handler (always add this)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 
 class UniversalBacktestEngine:
@@ -89,8 +122,10 @@ class UniversalBacktestEngine:
             strategy_candles.sort(key=lambda c: c.timestamp)  # Ensure chronological order
             
             # 5. Calculate required indicators
-            logger.info(f"Calculating indicators: {strategy.requires_indicators()}")
-            indicators_data = self._calculate_indicators(strategy_candles, strategy.requires_indicators())
+            required_indicators = strategy.requires_indicators()
+            logger.info(f"Calculating indicators: {required_indicators}")
+            indicators_data = self._calculate_indicators(strategy_candles, required_indicators)
+            logger.info(f"Calculated {len(indicators_data)} indicators: {list(indicators_data.keys())}")
             
             # 6. Run simulation with dual timeframes
             logger.info("Running dual-timeframe trading simulation...")
@@ -105,6 +140,39 @@ class UniversalBacktestEngine:
             # 7. Create results object
             end_time = datetime.now()
             execution_time = (end_time - start_time).total_seconds()
+            
+            # Convert indicators from Dict[str, Dict[datetime, float]] to Dict[str, List[float]]
+            # for chart generation
+            indicators_for_chart = {}
+            if indicators_data:
+                for indicator_name, indicator_dict in indicators_data.items():
+                    # Create a list aligned with strategy_candles timestamps
+                    indicator_list = []
+                    for candle in strategy_candles:
+                        value = indicator_dict.get(candle.timestamp, 0.0)
+                        indicator_list.append(value)
+                    indicators_for_chart[indicator_name.lower()] = indicator_list
+                    
+                    # Special handling for MACD - extract signal line and histogram
+                    if indicator_name.upper() == "MACD":
+                        # Get the calculator instance to access signal line and histogram
+                        calculator = self.indicator_registry._calculators.get(indicator_name)
+                        if calculator and hasattr(calculator, 'get_signal_line'):
+                            signal_line = calculator.get_signal_line()
+                            histogram = calculator.get_histogram()
+                            
+                            # Convert to lists aligned with candles
+                            signal_list = []
+                            histogram_list = []
+                            for candle in strategy_candles:
+                                signal_list.append(signal_line.get(candle.timestamp, 0.0))
+                                histogram_list.append(histogram.get(candle.timestamp, 0.0))
+                            
+                            indicators_for_chart['macd_signal'] = signal_list
+                            indicators_for_chart['macd_histogram'] = histogram_list
+                            logger.info(f"Extracted MACD signal line and histogram")
+                
+                logger.info(f"Prepared {len(indicators_for_chart)} indicators for chart generation")
             
             results = BacktestResults(
                 strategy_name=strategy.get_name(),
@@ -129,7 +197,8 @@ class UniversalBacktestEngine:
                 execution_time_seconds=execution_time,
                 data_source=f"{strategy_data.source} ({'cached' if hasattr(strategy_data, 'cached') and strategy_data.cached else 'fresh'})",
                 total_candles_processed=len(strategy_candles),
-                market_data=strategy_candles  # Include market data for chart generation
+                market_data=strategy_candles,  # Include market data for chart generation
+                indicators=indicators_for_chart  # Include indicators for chart generation
             )
             
             logger.info(f"Backtest completed: {results.total_trades} trades, {results.win_rate:.1%} win rate, {results.total_pips:+.1f} pips")

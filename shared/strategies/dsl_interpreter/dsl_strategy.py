@@ -130,8 +130,20 @@ class DSLStrategy(TradingStrategy):
         return getattr(self, 'execution_window_minutes', 1440)
     
     def requires_indicators(self) -> List[str]:
-        """DSL strategies don't require indicators by default."""
-        return []
+        """
+        Return list of indicators required by this DSL strategy.
+        Extracts indicator types from the DSL configuration.
+        """
+        if not hasattr(self, 'dsl_config') or 'indicators' not in self.dsl_config:
+            return []
+        
+        required = []
+        for indicator_config in self.dsl_config['indicators']:
+            indicator_type = indicator_config.get('type', '').upper()
+            if indicator_type:
+                required.append(indicator_type)
+        
+        return required
     
     def get_indicator_series(self, candles: List) -> Dict[str, List[float]]:
         """

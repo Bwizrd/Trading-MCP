@@ -40,6 +40,11 @@ class VWAPCalculator(IndicatorCalculator):
     def requires_periods(self) -> int:
         return 1  # VWAP can be calculated from first candle
     
+    def get_chart_config(self):
+        """Return chart configuration metadata."""
+        from shared.indicators_metadata import metadata_registry
+        return metadata_registry.get("VWAP")
+    
     def calculate(self, candles: List[Candle], **kwargs) -> Dict[datetime, float]:
         """
         Calculate VWAP for each candle using cumulative method.
@@ -84,6 +89,11 @@ class SMACalculator(IndicatorCalculator):
     def requires_periods(self) -> int:
         return self.period
     
+    def get_chart_config(self):
+        """Return chart configuration metadata."""
+        from shared.indicators_metadata import metadata_registry
+        return metadata_registry.get("SMA")
+    
     def calculate(self, candles: List[Candle], **kwargs) -> Dict[datetime, float]:
         """Calculate Simple Moving Average."""
         if len(candles) < self.period:
@@ -126,6 +136,11 @@ class EMACalculator(IndicatorCalculator):
     def requires_periods(self) -> int:
         return self.period
     
+    def get_chart_config(self):
+        """Return chart configuration metadata."""
+        from shared.indicators_metadata import metadata_registry
+        return metadata_registry.get("EMA")
+    
     def calculate(self, candles: List[Candle], **kwargs) -> Dict[datetime, float]:
         """Calculate Exponential Moving Average."""
         if len(candles) < self.period:
@@ -165,6 +180,11 @@ class RSICalculator(IndicatorCalculator):
     
     def requires_periods(self) -> int:
         return self.period + 1  # Need one extra for price change calculation
+    
+    def get_chart_config(self):
+        """Return chart configuration metadata."""
+        from shared.indicators_metadata import metadata_registry
+        return metadata_registry.get("RSI")
     
     def calculate(self, candles: List[Candle], **kwargs) -> Dict[datetime, float]:
         """Calculate RSI using standard Wilder's method."""
@@ -282,6 +302,11 @@ class MACDCalculator(IndicatorCalculator):
     def requires_periods(self) -> int:
         # Need enough data for slow EMA + signal EMA
         return self.slow_period + self.signal_period
+    
+    def get_chart_config(self):
+        """Return chart configuration metadata."""
+        from shared.indicators_metadata import metadata_registry
+        return metadata_registry.get("MACD")
     
     def calculate(self, candles: List[Candle], **kwargs) -> Dict[datetime, float]:
         """
