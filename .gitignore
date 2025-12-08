@@ -185,3 +185,4 @@ yarn-debug.log*
 yarn-error.log*
 
 /data
+/optimization_results

@@ -175,32 +175,32 @@
   - Add logging for debugging without affecting the math
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 2.1 Add basic validation before make_subplots
+- [x] 2.1 Add basic validation before make_subplots
   - Check that heights list is not empty
   - Check that spacing is positive
   - Log a warning if values look suspicious but proceed anyway
   - Only fail if values are clearly invalid (negative, NaN, etc.)
   - _Requirements: 2.5, 3.3_
 
-- [ ] 2.2 Add try-except around make_subplots
+- [x] 2.2 Add try-except around make_subplots
   - Wrap make_subplots in try-except
   - Log the exact configuration on error
   - Provide a simple fallback (2 rows: price + P&L)
   - _Requirements: 1.2, 1.3, 3.2_
 
-- [ ] 2.3 Add informational logging
+- [x] 2.3 Add informational logging
   - Log spacing and heights at INFO level
   - Log total allocated space for verification
   - Keep logs concise and readable
   - _Requirements: 3.1_
 
-- [ ] 2.4 Test error handling
+- [x] 2.4 Test error handling
   - Run backtests with various configurations
   - Verify logging is helpful
   - Verify fallback works if needed
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 3. Write integration tests
+- [-] 3. Write integration tests
   - Create tests that verify charts render correctly with various configurations
   - Test 2-row, 4-row, and 6-row layouts
   - Verify spacing is appropriate for each

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Modular Chart Engine - POC REWRITE VERSION 2025-12-05
+Modular Chart Engine
 
 Pure visualization engine that receives backtest results and creates charts.
 NO STRATEGY LOGIC - only consumes results from the Universal Backtest Engine.
@@ -8,7 +8,7 @@ NO STRATEGY LOGIC - only consumes results from the Universal Backtest Engine.
 Architecture:
 Strategy Cartridges → Backtest Engine → Chart Engine → HTML/PNG Charts
 
-🔧 REWRITE STATUS: Using POC spacing calculation (poc_subplot_spacing.py)
+Uses POC-validated spacing calculation for proper subplot separation.
 """
 
 import sys
@@ -356,9 +356,6 @@ class ChartEngine:
         """
         logger.info(f"Creating comprehensive chart with {len(candles)} candles and {len(backtest_results.trades)} trades")
         
-        # 🔧 DEBUG: Add obvious marker to title to confirm we're using the rewritten version
-        title = f"🔧 POC REWRITE - {title}"
-        
         # Convert candles to DataFrame for easier processing
         df = self._candles_to_dataframe(candles)
         
@@ -407,6 +404,27 @@ class ChartEngine:
             subplot_titles = [f"{title} - Price Action", "Cumulative P&L"]
             self._current_layout = layout
         
+        # Validate layout before creating subplots
+        # Basic sanity checks - only fail on clearly invalid values
+        if not row_heights or len(row_heights) == 0:
+            logger.error("Row heights list is empty! Using fallback.")
+            layout = {"price": 1, "pnl": 2}
+            total_rows = 2
+            spacing = 0.12
+            row_heights = self._calculate_row_heights(layout, spacing)
+            subplot_titles = [f"{title} - Price Action", "Cumulative P&L"]
+            self._current_layout = layout
+        
+        if spacing < 0:
+            logger.warning(f"Negative spacing detected ({spacing:.3f}), using 0.08 instead")
+            spacing = 0.08
+        
+        if any(h <= 0 for h in row_heights):
+            logger.warning(f"Non-positive height detected in {row_heights}, this may cause issues")
+        
+        # Log final configuration for debugging
+        logger.info(f"Final layout validation: {total_rows} rows, spacing={spacing:.3f}, heights sum={sum(row_heights):.4f}")
+        
         # Create subplots with error handling
         # Using POC approach: simple, direct call without specs parameter
         try:
@@ -419,12 +437,16 @@ class ChartEngine:
                 shared_xaxes=True
             )
         except Exception as e:
-            logger.error(f"Error creating subplots with {total_rows} rows: {e}. Falling back to simple 2-row layout.")
+            logger.error(f"Error creating subplots with {total_rows} rows: {e}")
+            logger.error(f"Failed configuration: rows={total_rows}, spacing={spacing:.3f}, heights={row_heights}")
+            logger.error(f"Falling back to simple 2-row layout (price + P&L)")
+            
             # Fallback to simple 2-row layout
             layout = {"price": 1, "pnl": 2}
             row_heights = [0.8, 0.2]
             subplot_titles = [f"{title} - Price Action", "Cumulative P&L"]
             total_rows = 2
+            spacing = 0.12
             self._current_layout = layout
             
             try:
@@ -1466,7 +1488,7 @@ class ChartEngine:
         """Update chart layout with styling and annotations."""
         fig.update_layout(
             title={
-                'text': f"🔧 POC REWRITE v2 🔧 {title}",
+                'text': title,
                 'x': 0.5,
                 'font': {'size': 20}
             },
@@ -1476,6 +1498,14 @@ class ChartEngine:
             hovermode='x unified',
             xaxis_rangeslider_visible=False,  # POC approach: disable globally
             margin=dict(t=100, b=50, l=80, r=80)  # Explicit margins, reduced bottom since no range slider
+        )
+        
+        # Hide weekend gaps by configuring rangebreaks for all x-axes
+        # This removes gaps when the market is closed (weekends)
+        fig.update_xaxes(
+            rangebreaks=[
+                dict(bounds=["sat", "mon"])  # Hide Saturday and Sunday
+            ]
         )
         
 

@@ -12,12 +12,44 @@ It uses the same DataConnector, TradingStrategy interface, and MCP system.
 from typing import Dict, Any, List, Optional
 from datetime import time, datetime, date
 import re
+import logging
+from pathlib import Path
 
 # Indicator calculation imports are done conditionally in methods that need them
 
 from shared.models import Candle, TradeDirection
 from shared.strategy_interface import TradingStrategy, StrategyContext, Signal, SignalStrength
 from .schema_validator import validate_dsl_strategy, DSLValidationError
+
+# Configure diagnostic logging
+DEBUG_LOG_PATH = '/tmp/dsl_debug.log'
+
+def setup_diagnostic_logger():
+    """Set up file-based diagnostic logger for DSL strategy debugging."""
+    logger = logging.getLogger('dsl_diagnostic')
+    logger.setLevel(logging.DEBUG)
+    
+    # Remove existing handlers to avoid duplicates
+    logger.handlers.clear()
+    
+    # Create file handler
+    fh = logging.FileHandler(DEBUG_LOG_PATH, mode='a')
+    fh.setLevel(logging.DEBUG)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    fh.setFormatter(formatter)
+    
+    logger.addHandler(fh)
+    logger.propagate = False  # Don't propagate to root logger
+    
+    return logger
+
+# Initialize diagnostic logger
+diagnostic_logger = setup_diagnostic_logger()
 
 
 class DSLStrategy(TradingStrategy):
@@ -52,6 +84,9 @@ class DSLStrategy(TradingStrategy):
         # because super().__init__() calls get_name() which needs dsl_config
         self.dsl_config = dsl_config
         
+        # Initialize diagnostic logging for this strategy instance
+        self._init_diagnostic_logging()
+        
         super().__init__()
         
         # Determine strategy type
@@ -81,6 +116,20 @@ class DSLStrategy(TradingStrategy):
         self.daily_trade_count = 0
         self.last_trade_date = None
         
+    def _init_diagnostic_logging(self) -> None:
+        """Initialize diagnostic logging for this strategy instance."""
+        # Clear the debug log file at the start of each strategy initialization
+        try:
+            with open(DEBUG_LOG_PATH, 'w') as f:
+                f.write(f"=== DSL Strategy Diagnostic Log ===\n")
+                f.write(f"Strategy: {self.dsl_config.get('name', 'Unknown')}\n")
+                f.write(f"Version: {self.dsl_config.get('version', 'Unknown')}\n")
+                f.write(f"Initialized at: {datetime.now()}\n")
+                f.write(f"=" * 50 + "\n\n")
+            diagnostic_logger.info(f"Diagnostic logging initialized for strategy: {self.dsl_config.get('name', 'Unknown')}")
+        except Exception as e:
+            diagnostic_logger.error(f"Failed to initialize diagnostic log file: {e}")
+    
     def _init_time_based(self, dsl_config: Dict[str, Any]) -> None:
         """Initialize time-based strategy (original logic)."""
         # Parse timing configuration
@@ -242,35 +291,56 @@ class DSLStrategy(TradingStrategy):
         candle = context.current_candle
         current_date = candle.timestamp.date()
         
-        # DEBUG: Write to file to confirm this code is running
-        with open('/tmp/dsl_debug.log', 'a') as f:
-            f.write(f"_generate_indicator_signal called at {candle.timestamp}, has_indicators={bool(self.indicator_values)}\n")
+        diagnostic_logger.debug(f"=== _generate_indicator_signal START ===")
+        diagnostic_logger.debug(f"Timestamp: {candle.timestamp}")
+        diagnostic_logger.debug(f"Candle: O={candle.open:.5f} H={candle.high:.5f} L={candle.low:.5f} C={candle.close:.5f}")
+        diagnostic_logger.debug(f"Has indicators: {bool(self.indicator_values)}")
+        diagnostic_logger.debug(f"Has previous indicators: {bool(self.previous_indicator_values)}")
         
         # Check daily trade limit
         if self.last_trade_date == current_date and self.daily_trade_count >= self.max_daily_trades:
+            diagnostic_logger.debug(f"Daily trade limit reached: {self.daily_trade_count}/{self.max_daily_trades}")
             return None
             
         # Skip if already in position
         if context.current_position:
+            diagnostic_logger.debug(f"Already in position, skipping signal generation")
             return None
             
         # Need indicators calculated
         if not self.indicator_values:
+            diagnostic_logger.debug(f"No indicator values available yet")
             return None
+        
+        # Log current indicator values
+        diagnostic_logger.debug(f"Current indicator values:")
+        for key, value in self.indicator_values.items():
+            diagnostic_logger.debug(f"  {key} = {value}")
+        
+        # Log previous indicator values
+        if self.previous_indicator_values:
+            diagnostic_logger.debug(f"Previous indicator values:")
+            for key, value in self.previous_indicator_values.items():
+                diagnostic_logger.debug(f"  {key} = {value}")
+        else:
+            diagnostic_logger.debug(f"No previous indicator values available")
             
         # Evaluate indicator conditions (includes crossover detection)
+        diagnostic_logger.debug(f"Evaluating indicator conditions...")
         signal_direction = self._evaluate_indicator_conditions()
         
-        # DEBUG: Log signal detection
         if signal_direction:
-            with open('/tmp/dsl_debug.log', 'a') as f:
-                f.write(f"SIGNAL DETECTED: {signal_direction} at {candle.timestamp}\n")
+            diagnostic_logger.info(f"*** SIGNAL DETECTED: {signal_direction} at {candle.timestamp} ***")
+        else:
+            diagnostic_logger.debug(f"No signal generated (conditions not met)")
         
         if signal_direction is None:
+            diagnostic_logger.debug(f"=== _generate_indicator_signal END (no signal) ===")
             return None
             
         # Calculate signal strength - for indicators, use distance between MAs
         strength = self._calculate_indicator_signal_strength()
+        diagnostic_logger.debug(f"Signal strength: {strength}")
         
         # Create signal
         signal = Signal(
@@ -286,9 +356,8 @@ class DSLStrategy(TradingStrategy):
             }
         )
         
-        # DEBUG: Log signal creation
-        with open('/tmp/dsl_debug.log', 'a') as f:
-            f.write(f"SIGNAL CREATED: {signal.direction} @ {signal.price} at {signal.timestamp}\n")
+        diagnostic_logger.info(f"SIGNAL CREATED: {signal.direction} @ {signal.price:.5f}")
+        diagnostic_logger.debug(f"Signal reason: {signal.reason}")
         
         # Update trade tracking
         if self.last_trade_date != current_date:
@@ -296,11 +365,9 @@ class DSLStrategy(TradingStrategy):
             self.last_trade_date = current_date
         
         self.daily_trade_count += 1
+        diagnostic_logger.debug(f"Daily trade count: {self.daily_trade_count}")
         
-        # DEBUG: Log signal return
-        with open('/tmp/dsl_debug.log', 'a') as f:
-            f.write(f"RETURNING SIGNAL: {signal}\n")
-        
+        diagnostic_logger.debug(f"=== _generate_indicator_signal END (signal returned) ===")
         return signal
         
     def _generate_time_based_signal(self, context: StrategyContext) -> Optional[Signal]:
@@ -439,20 +506,39 @@ class DSLStrategy(TradingStrategy):
         Returns:
             TradeDirection or None if no condition is met
         """
+        diagnostic_logger.debug(f"--- _evaluate_indicator_conditions START ---")
+        
         # Need current and previous values for crossover detection
         if not self.indicator_values or not self.previous_indicator_values:
+            diagnostic_logger.debug(f"Missing indicator values for condition evaluation")
+            diagnostic_logger.debug(f"  Current values: {bool(self.indicator_values)}")
+            diagnostic_logger.debug(f"  Previous values: {bool(self.previous_indicator_values)}")
             return None
             
         # Check buy condition
         buy_config = self.dsl_config["conditions"]["buy"]
-        if self._check_indicator_condition(buy_config):
+        diagnostic_logger.debug(f"Checking BUY condition: {buy_config}")
+        buy_result = self._check_indicator_condition(buy_config)
+        diagnostic_logger.debug(f"BUY condition result: {buy_result}")
+        
+        if buy_result:
+            diagnostic_logger.info(f"BUY condition MET!")
+            diagnostic_logger.debug(f"--- _evaluate_indicator_conditions END (BUY) ---")
             return TradeDirection.BUY
             
         # Check sell condition
-        sell_config = self.dsl_config["conditions"]["sell"] 
-        if self._check_indicator_condition(sell_config):
+        sell_config = self.dsl_config["conditions"]["sell"]
+        diagnostic_logger.debug(f"Checking SELL condition: {sell_config}")
+        sell_result = self._check_indicator_condition(sell_config)
+        diagnostic_logger.debug(f"SELL condition result: {sell_result}")
+        
+        if sell_result:
+            diagnostic_logger.info(f"SELL condition MET!")
+            diagnostic_logger.debug(f"--- _evaluate_indicator_conditions END (SELL) ---")
             return TradeDirection.SELL
-            
+        
+        diagnostic_logger.debug(f"No conditions met")
+        diagnostic_logger.debug(f"--- _evaluate_indicator_conditions END (None) ---")
         return None
         
     def _check_indicator_condition(self, condition_config: Dict[str, Any]) -> bool:
@@ -468,19 +554,36 @@ class DSLStrategy(TradingStrategy):
         compare_str = condition_config["compare"]
         needs_crossover = condition_config.get("crossover", False)
         
+        diagnostic_logger.debug(f"  _check_indicator_condition:")
+        diagnostic_logger.debug(f"    Compare string: '{compare_str}'")
+        diagnostic_logger.debug(f"    Needs crossover: {needs_crossover}")
+        
         # Evaluate current condition
         current_result = self._evaluate_condition(compare_str, self.indicator_values)
+        diagnostic_logger.debug(f"    Current condition result: {current_result}")
         
         if not needs_crossover:
+            diagnostic_logger.debug(f"    No crossover needed, returning: {current_result}")
             return current_result
             
         # For crossover, check that condition is true now but was false before
         if not current_result:
+            diagnostic_logger.debug(f"    Current condition is False, no crossover possible")
             return False
             
         # Check previous condition was false (crossover occurred)
         previous_result = self._evaluate_condition(compare_str, self.previous_indicator_values)
-        return not previous_result
+        diagnostic_logger.debug(f"    Previous condition result: {previous_result}")
+        
+        crossover_detected = not previous_result
+        diagnostic_logger.debug(f"    Crossover detected: {crossover_detected}")
+        
+        if crossover_detected:
+            diagnostic_logger.info(f"    *** CROSSOVER DETECTED ***")
+            diagnostic_logger.info(f"      Condition: {compare_str}")
+            diagnostic_logger.info(f"      Previous: {previous_result} -> Current: {current_result}")
+        
+        return crossover_detected
     
     def _evaluate_condition(self, condition_str: str, context: Dict[str, float]) -> bool:
         """
@@ -493,33 +596,62 @@ class DSLStrategy(TradingStrategy):
         Returns:
             bool: True if condition is met
         """
+        diagnostic_logger.debug(f"      _evaluate_condition:")
+        diagnostic_logger.debug(f"        Condition string: '{condition_str}'")
+        diagnostic_logger.debug(f"        Context: {context}")
+        
         try:
             # Replace variables with actual values
+            # CRITICAL FIX: Sort variables by length (longest first) to prevent partial replacements
+            # Example: Replace 'macd_signal' before 'macd' to avoid breaking compound names
+            # Without this, 'macd > macd_signal' becomes '6.7e-05 > 6.7e-05_signal' (broken!)
             expression = condition_str
-            for var_name, var_value in context.items():
+            sorted_vars = sorted(context.items(), key=lambda x: len(x[0]), reverse=True)
+            
+            for var_name, var_value in sorted_vars:
                 if var_value is not None:
+                    old_expr = expression
                     expression = expression.replace(var_name, str(var_value))
+                    if old_expr != expression:
+                        diagnostic_logger.debug(f"        Replaced '{var_name}' with {var_value}")
+            
+            diagnostic_logger.debug(f"        Final expression: '{expression}'")
             
             # Check if all variables were replaced
+            # Note: 'e' in scientific notation (e.g., 1.23e-05) is not a variable
             import re
             remaining_vars = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*', expression)
-            if any(var not in ['and', 'or', 'not'] for var in remaining_vars):
+            # Filter out 'e' when it's part of scientific notation (preceded by digit)
+            actual_vars = []
+            for match in re.finditer(r'[a-zA-Z_][a-zA-Z0-9_]*', expression):
+                var = match.group()
+                # Check if this is 'e' in scientific notation
+                if var == 'e' and match.start() > 0 and expression[match.start()-1].isdigit():
+                    continue  # Skip 'e' in scientific notation
+                actual_vars.append(var)
+            
+            if any(var not in ['and', 'or', 'not'] for var in actual_vars):
                 # Some variables not replaced, condition can't be evaluated
+                diagnostic_logger.warning(f"        Unresolved variables: {actual_vars}")
                 return False
             
             # Validate expression contains only allowed characters
-            allowed_pattern = r'^[\d\.\+\-\*\/\(\)\s><!=]+$'
+            # Allow 'e' and 'E' for scientific notation (e.g., 1.23e-05)
+            allowed_pattern = r'^[\d\.eE\+\-\*\/\(\)\s><!=]+$'
             if not re.match(allowed_pattern, expression):
+                diagnostic_logger.error(f"        Invalid characters in expression: {expression}")
                 raise ValueError(f"Invalid characters in condition: {expression}")
             
             # Evaluate safely (only simple mathematical/comparison expressions)
             result = eval(expression, {"__builtins__": {}}, {})
-            return bool(result)
+            bool_result = bool(result)
+            diagnostic_logger.debug(f"        Evaluation result: {bool_result}")
+            return bool_result
             
         except Exception as e:
-            # Log warning instead of printing to avoid JSON contamination
-            import logging
-            logging.warning(f"DSL condition evaluation failed for '{condition_str}': {e}")
+            diagnostic_logger.error(f"        Condition evaluation failed: {e}")
+            diagnostic_logger.error(f"        Condition: '{condition_str}'")
+            diagnostic_logger.error(f"        Context: {context}")
             return False
     
     def _calculate_signal_strength(self, price_distance: float, signal_price: float) -> SignalStrength:
@@ -583,6 +715,7 @@ class DSLStrategy(TradingStrategy):
         # Reset daily state at start of new day
         if current_date != self.last_trade_date:
             self.daily_trade_count = 0
+            diagnostic_logger.debug(f"New trading day: {current_date}, reset trade count")
         
         if self.is_indicator_based:
             # Calculate indicators for indicator-based strategies
@@ -591,17 +724,19 @@ class DSLStrategy(TradingStrategy):
             # Reset reference price at start of new day for time-based strategies
             if current_date != self.last_reference_date:
                 self.reference_price = None
+                diagnostic_logger.debug(f"New day for time-based strategy, reset reference price")
 
     def _calculate_indicators(self, candle) -> None:
         """Calculate indicators for indicator-based strategies."""
+        diagnostic_logger.debug(f">>> _calculate_indicators START >>>")
+        diagnostic_logger.debug(f"Candle timestamp: {candle.timestamp}")
+        
         # Import libraries when needed
         try:
             import pandas as pd
             import ta
         except ImportError as e:
-            # Log warning instead of printing to avoid JSON contamination
-            import logging
-            logging.warning(f"Missing required libraries for indicator calculations: {e}")
+            diagnostic_logger.error(f"Missing required libraries: {e}")
             return
             
         # Store candle in history
@@ -613,12 +748,16 @@ class DSLStrategy(TradingStrategy):
             'volume': getattr(candle, 'volume', 0)
         })
         
+        diagnostic_logger.debug(f"Candle history length: {len(self.candle_history)}")
+        
         # Keep max 300 candles for memory efficiency
         if len(self.candle_history) > 300:
             self.candle_history = self.candle_history[-300:]
+            diagnostic_logger.debug(f"Trimmed history to 300 candles")
         
         # Need enough data for calculations
         if len(self.candle_history) < 2:
+            diagnostic_logger.debug(f"Insufficient candle history (need >= 2, have {len(self.candle_history)})")
             return
         
         # Convert to DataFrame for TA library
@@ -626,12 +765,17 @@ class DSLStrategy(TradingStrategy):
         
         # Store previous values for crossover detection
         self.previous_indicator_values = self.indicator_values.copy()
+        diagnostic_logger.debug(f"Stored previous indicator values: {self.previous_indicator_values}")
         
         # Calculate each indicator defined in the configuration
         if 'indicators' in self.dsl_config:
+            diagnostic_logger.debug(f"Calculating {len(self.dsl_config['indicators'])} indicators")
+            
             for indicator in self.dsl_config['indicators']:
                 ind_type = indicator['type']
                 alias = indicator['alias']
+                
+                diagnostic_logger.debug(f"  Calculating {ind_type} as '{alias}'")
                 
                 try:
                     if ind_type == 'SMA':
@@ -639,21 +783,35 @@ class DSLStrategy(TradingStrategy):
                         if len(df) >= period:
                             sma = ta.trend.sma_indicator(df['close'], window=period)
                             self.indicator_values[alias] = float(sma.iloc[-1])
+                            diagnostic_logger.debug(f"    {alias} = {self.indicator_values[alias]:.6f}")
+                        else:
+                            diagnostic_logger.debug(f"    Insufficient data for SMA (need {period}, have {len(df)})")
+                            
                     elif ind_type == 'EMA':
                         period = indicator['period']
                         if len(df) >= period:
                             ema = ta.trend.ema_indicator(df['close'], window=period)
                             self.indicator_values[alias] = float(ema.iloc[-1])
+                            diagnostic_logger.debug(f"    {alias} = {self.indicator_values[alias]:.6f}")
+                        else:
+                            diagnostic_logger.debug(f"    Insufficient data for EMA (need {period}, have {len(df)})")
+                            
                     elif ind_type == 'RSI':
                         period = indicator['period']
                         if len(df) >= period:
                             rsi = ta.momentum.rsi(df['close'], window=period)
                             self.indicator_values[alias] = float(rsi.iloc[-1])
+                            diagnostic_logger.debug(f"    {alias} = {self.indicator_values[alias]:.6f}")
+                        else:
+                            diagnostic_logger.debug(f"    Insufficient data for RSI (need {period}, have {len(df)})")
+                            
                     elif ind_type == 'MACD':
                         # MACD has optional parameters
                         fast_period = indicator.get('fast_period', 12)
                         slow_period = indicator.get('slow_period', 26)
                         signal_period = indicator.get('signal_period', 9)
+                        
+                        diagnostic_logger.debug(f"    MACD params: fast={fast_period}, slow={slow_period}, signal={signal_period}")
                         
                         if len(df) >= slow_period + signal_period:
                             macd_indicator = ta.trend.MACD(
@@ -666,10 +824,18 @@ class DSLStrategy(TradingStrategy):
                             self.indicator_values[alias] = float(macd_indicator.macd().iloc[-1])
                             self.indicator_values[f"{alias}_signal"] = float(macd_indicator.macd_signal().iloc[-1])
                             self.indicator_values[f"{alias}_histogram"] = float(macd_indicator.macd_diff().iloc[-1])
+                            
+                            diagnostic_logger.debug(f"    {alias} = {self.indicator_values[alias]:.8f}")
+                            diagnostic_logger.debug(f"    {alias}_signal = {self.indicator_values[f'{alias}_signal']:.8f}")
+                            diagnostic_logger.debug(f"    {alias}_histogram = {self.indicator_values[f'{alias}_histogram']:.8f}")
+                        else:
+                            diagnostic_logger.debug(f"    Insufficient data for MACD (need {slow_period + signal_period}, have {len(df)})")
+                            
                 except Exception as e:
-                    # Log warning instead of printing to avoid JSON contamination
-                    import logging
-                    logging.warning(f"Error calculating {alias} ({ind_type}): {e}")
+                    diagnostic_logger.error(f"    Error calculating {alias} ({ind_type}): {e}")
+        
+        diagnostic_logger.debug(f">>> _calculate_indicators END >>>")
+        diagnostic_logger.debug(f"")
                     
     def _calculate_indicator_signal_strength(self) -> SignalStrength:
         """Calculate signal strength for indicator-based strategies."""
