@@ -97,7 +97,7 @@ class BulkBacktestReportGenerator:
                     <td>{result.get('timeframe', 'N/A')}</td>
                     <td>{sl_tp}</td>
                     <td>{result.get('total_trades', 0)}</td>
-                    <td>{result.get('win_rate', 0):.1f}%</td>
+                    <td>{result.get('win_rate', 0) * 100:.1f}%</td>
                     <td class="{pips_class}">{pips:+.1f}</td>
                     <td>{result.get('profit_factor', 0):.2f}</td>
                     <td>{result.get('max_drawdown', 0):.1f}</td>
@@ -420,7 +420,7 @@ class BulkBacktestReportGenerator:
             <div class="detail"><strong>Timeframe:</strong> {result.get('timeframe', 'N/A')}</div>
             <div class="detail"><strong>SL/TP:</strong> {sl_tp}</div>
             <div class="detail"><strong>Total Pips:</strong> {result.get('total_pips', 0):+.1f}</div>
-            <div class="detail"><strong>Win Rate:</strong> {result.get('win_rate', 0):.1f}%</div>
+            <div class="detail"><strong>Win Rate:</strong> {result.get('win_rate', 0) * 100:.1f}%</div>
             <div class="detail"><strong>Profit Factor:</strong> {result.get('profit_factor', 0):.2f}</div>
             <div class="detail"><strong>Trades:</strong> {result.get('total_trades', 0)}</div>
         """
