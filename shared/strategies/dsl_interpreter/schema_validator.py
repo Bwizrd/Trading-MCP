@@ -348,8 +348,8 @@ def _validate_risk_management(config: Dict[str, Any]) -> None:
     # Validate optional fields
     if "max_daily_trades" in risk_mgmt:
         max_trades = risk_mgmt["max_daily_trades"]
-        if not isinstance(max_trades, int) or max_trades < 1 or max_trades > 10:
-            raise ValueError("'max_daily_trades' must be an integer between 1 and 10")
+        if not isinstance(max_trades, int) or max_trades < 1 or max_trades > 200:
+            raise ValueError("'max_daily_trades' must be an integer between 1 and 200")
     
     if "min_pip_distance" in risk_mgmt:
         min_distance = risk_mgmt["min_pip_distance"]

@@ -67,7 +67,7 @@
   "risk_management": {
     "stop_loss_pips": 15,
     "take_profit_pips": 25,
-    "max_daily_trades": 4,
+    "max_daily_trades": 200,
     "min_pip_distance": 0.0001,
     "execution_window_minutes": 1440
   }
