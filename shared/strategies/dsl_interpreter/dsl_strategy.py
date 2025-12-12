@@ -451,6 +451,41 @@ class DSLStrategy(TradingStrategy):
         
         return indicator_series
     
+    def _is_within_trading_hours(self, timestamp) -> bool:
+        """
+        Check if the given timestamp is within configured trading hours.
+        
+        Args:
+            timestamp: Datetime to check
+            
+        Returns:
+            True if within trading hours or no trading hours configured, False otherwise
+        """
+        risk_mgmt = self.dsl_config.get('risk_management', {})
+        trading_hours_start = risk_mgmt.get('trading_hours_start')
+        trading_hours_end = risk_mgmt.get('trading_hours_end')
+        
+        # If no trading hours configured, allow all times
+        if not trading_hours_start or not trading_hours_end:
+            return True
+        
+        # Parse trading hours
+        start_hour, start_minute = map(int, trading_hours_start.split(':'))
+        end_hour, end_minute = map(int, trading_hours_end.split(':'))
+        
+        # Get current time in minutes since midnight
+        current_minutes = timestamp.hour * 60 + timestamp.minute
+        start_minutes = start_hour * 60 + start_minute
+        end_minutes = end_hour * 60 + end_minute
+        
+        # Handle cases where trading hours span midnight
+        if start_minutes <= end_minutes:
+            # Normal case: e.g., 09:30 to 16:00
+            return start_minutes <= current_minutes <= end_minutes
+        else:
+            # Spans midnight: e.g., 22:00 to 02:00
+            return current_minutes >= start_minutes or current_minutes <= end_minutes
+    
     def generate_signal(self, context: StrategyContext) -> Optional[Signal]:
         """
         Generate trading signal based on DSL configuration.
@@ -472,6 +507,14 @@ class DSLStrategy(TradingStrategy):
         """
         candle = context.current_candle
         current_date = candle.timestamp.date()
+        
+        # ONE TRADE AT A TIME: Don't generate new signals if there's an active trade
+        if context.current_position is not None:
+            return None
+        
+        # Check trading hours if configured
+        if not self._is_within_trading_hours(candle.timestamp):
+            return None
         
         if self.is_indicator_based:
             return self._generate_indicator_signal(context)

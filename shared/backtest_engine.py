@@ -548,9 +548,11 @@ class UniversalBacktestEngine:
         3. Executes trades with precise timing
         
         This reduces data usage by ~96% while maintaining full precision.
+        
+        CRITICAL: Tracks active trades to prevent overlapping positions.
         """
         trades = []
-        open_trade = None
+        active_trades = []  # Track all trades that haven't closed yet
         historical_candles = []
         
         logger.info(f"Running signal-driven simulation: {len(strategy_candles)} strategy candles")
@@ -565,12 +567,27 @@ class UniversalBacktestEngine:
                 if candle.timestamp in indicator_values:
                     current_indicators[indicator_name] = indicator_values[candle.timestamp]
             
-            # Create strategy context
+            # Check if any active trades should be closed by this candle's timestamp
+            # (trades that have exit_time <= current candle timestamp)
+            still_active = []
+            for trade in active_trades:
+                if trade.exit_time and trade.exit_time <= candle.timestamp:
+                    # Trade has closed before or at this candle
+                    logger.debug(f"Trade closed: {trade.direction.name} @ {trade.exit_time} (before current candle @ {candle.timestamp})")
+                else:
+                    # Trade is still active
+                    still_active.append(trade)
+            active_trades = still_active
+            
+            # Determine current position (first active trade, or None)
+            current_position = active_trades[0] if active_trades else None
+            
+            # Create strategy context with current position
             context = StrategyContext(
                 current_candle=candle,
                 historical_candles=historical_candles.copy(),
                 indicators=current_indicators,
-                current_position=open_trade,
+                current_position=current_position,
                 symbol=config.symbol,
                 timeframe=config.timeframe
             )
@@ -578,8 +595,8 @@ class UniversalBacktestEngine:
             # Let strategy process the candle
             strategy.on_candle_processed(context)
             
-            # Generate signal if no open position
-            if not open_trade:
+            # Generate signal only if no active position
+            if not current_position:
                 signal = strategy.generate_signal(context)
                 if signal:
                     logger.info(f"Signal generated: {signal.direction.name} @ {candle.timestamp}")
@@ -612,24 +629,27 @@ class UniversalBacktestEngine:
                         
                         if trade_result:
                             trades.append(trade_result)
-                            logger.info(f"Trade completed: {trade_result.direction.name} @ {trade_result.entry_price:.5f} -> {trade_result.exit_price:.5f} = {trade_result.pips:+.1f} pips")
+                            active_trades.append(trade_result)  # Add to active trades
+                            logger.info(f"Trade completed: {trade_result.direction.name} @ {trade_result.entry_price:.5f} -> {trade_result.exit_price:.5f} = {trade_result.pips:+.1f} pips (entry: {trade_result.entry_time}, exit: {trade_result.exit_time})")
                     else:
                         logger.warning(f"No execution data available for signal @ {candle.timestamp}")
+            else:
+                logger.debug(f"Skipping signal generation @ {candle.timestamp} - active position exists (entry: {current_position.entry_time}, direction: {current_position.direction.name})")
         
-        # Close any remaining open trade at end of period
-        if open_trade:
-            last_candle = strategy_candles[-1]
-            open_trade.exit_price = last_candle.close
-            open_trade.exit_time = last_candle.timestamp
-            open_trade.result = TradeResult.EOD_CLOSE
-            open_trade.pips = self._calculate_pips(
-                open_trade.entry_price,
-                open_trade.exit_price,
-                open_trade.direction,
-                config.symbol
-            )
-            trades.append(open_trade)
-            logger.info(f"Trade closed at end: {open_trade.direction.name} @ {open_trade.exit_price:.5f} = {open_trade.pips:+.1f} pips")
+        # Close any remaining active trades at end of period
+        for open_trade in active_trades:
+            if not open_trade.exit_time:
+                last_candle = strategy_candles[-1]
+                open_trade.exit_price = last_candle.close
+                open_trade.exit_time = last_candle.timestamp
+                open_trade.result = TradeResult.EOD_CLOSE
+                open_trade.pips = self._calculate_pips(
+                    open_trade.entry_price,
+                    open_trade.exit_price,
+                    open_trade.direction,
+                    config.symbol
+                )
+                logger.info(f"Trade closed at end: {open_trade.direction.name} @ {open_trade.exit_price:.5f} = {open_trade.pips:+.1f} pips")
         
         return trades
     

@@ -126,6 +126,16 @@ DSL_STRATEGY_SCHEMA = {
                     "maximum": 100,
                     "default": 0.0001,
                     "description": "Minimum pip distance between prices to generate signal"
+                },
+                "trading_hours_start": {
+                    "type": "string",
+                    "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$",
+                    "description": "Trading hours start time in HH:MM format (UTC)"
+                },
+                "trading_hours_end": {
+                    "type": "string",
+                    "pattern": "^([0-1][0-9]|2[0-3]):[0-5][0-9]$",
+                    "description": "Trading hours end time in HH:MM format (UTC)"
                 }
             },
             "additionalProperties": False
@@ -355,6 +365,23 @@ def _validate_risk_management(config: Dict[str, Any]) -> None:
         min_distance = risk_mgmt["min_pip_distance"]
         if not isinstance(min_distance, (int, float)) or min_distance < 0:
             raise ValueError("'min_pip_distance' must be a non-negative number")
+    
+    # Validate trading hours
+    if "trading_hours_start" in risk_mgmt or "trading_hours_end" in risk_mgmt:
+        if "trading_hours_start" not in risk_mgmt or "trading_hours_end" not in risk_mgmt:
+            raise ValueError("Both 'trading_hours_start' and 'trading_hours_end' must be specified together")
+        
+        import re
+        time_pattern = re.compile(r'^([0-1][0-9]|2[0-3]):([0-5][0-9])$')
+        
+        start_time = risk_mgmt["trading_hours_start"]
+        end_time = risk_mgmt["trading_hours_end"]
+        
+        if not isinstance(start_time, str) or not time_pattern.match(start_time):
+            raise ValueError("'trading_hours_start' must be in HH:MM format (00:00 to 23:59)")
+        
+        if not isinstance(end_time, str) or not time_pattern.match(end_time):
+            raise ValueError("'trading_hours_end' must be in HH:MM format (00:00 to 23:59)")
 
 
 def validate_dsl_file(file_path: str) -> Dict[str, Any]:

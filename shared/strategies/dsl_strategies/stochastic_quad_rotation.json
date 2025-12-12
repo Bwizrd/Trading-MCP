@@ -69,6 +69,8 @@
     "take_profit_pips": 25,
     "max_daily_trades": 200,
     "min_pip_distance": 0.0001,
-    "execution_window_minutes": 1440
+    "execution_window_minutes": 1440,
+    "trading_hours_start": "14:30",
+    "trading_hours_end": "21:00"
   }
 }
