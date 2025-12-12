@@ -21,6 +21,9 @@ from shared.models import Candle, TradeDirection
 from shared.strategy_interface import TradingStrategy, StrategyContext, Signal, SignalStrength
 from .schema_validator import validate_dsl_strategy, DSLValidationError
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 # Configure diagnostic logging
 DEBUG_LOG_PATH = '/tmp/dsl_debug.log'
 
@@ -100,9 +103,14 @@ class DSLStrategy(TradingStrategy):
             self._init_time_based(dsl_config)
         
         # Common initialization for both types
-        # Parse conditions
-        self.buy_condition = dsl_config["conditions"]["buy"]["compare"]
-        self.sell_condition = dsl_config["conditions"]["sell"]["compare"]
+        # Parse conditions (handle both simple and rotation types)
+        buy_config = dsl_config["conditions"]["buy"]
+        sell_config = dsl_config["conditions"]["sell"]
+        
+        # For simple conditions, store the compare string
+        # For rotation conditions, store the full config
+        self.buy_condition = buy_config.get("compare", buy_config)
+        self.sell_condition = sell_config.get("compare", sell_config)
         
         # Parse risk management
         risk_mgmt = dsl_config["risk_management"]
@@ -155,6 +163,41 @@ class DSLStrategy(TradingStrategy):
         self.candle_history = []
         self.indicator_values = {}
         self.previous_indicator_values = {}
+        
+        # Check if this is an advanced strategy (rotation type)
+        self.is_advanced_strategy = self._is_advanced_strategy(dsl_config)
+        
+        if self.is_advanced_strategy:
+            # Initialize advanced components
+            from .advanced_components import MultiIndicatorManager, CrossoverDetector, ConditionEvaluator
+            self.multi_indicator_manager = MultiIndicatorManager()
+            self.crossover_detector = CrossoverDetector()
+            self.condition_evaluator = ConditionEvaluator()
+            
+            # Register indicator instances
+            for indicator_config in dsl_config.get("indicators", []):
+                self.multi_indicator_manager.register_instance(
+                    indicator_type=indicator_config["type"],
+                    alias=indicator_config["alias"],
+                    params=indicator_config.get("params", {})
+                )
+            
+            diagnostic_logger.info(f"Advanced strategy initialized with {len(self.multi_indicator_manager.list_instances())} indicator instances")
+        else:
+            # Simple strategy - no advanced components needed
+            self.multi_indicator_manager = None
+            self.crossover_detector = None
+            self.condition_evaluator = None
+    
+    def _is_advanced_strategy(self, dsl_config: Dict[str, Any]) -> bool:
+        """Check if this is an advanced strategy requiring new components."""
+        # Check for rotation-type conditions
+        conditions = dsl_config.get("conditions", {})
+        for direction in ["buy", "sell"]:
+            condition = conditions.get(direction, {})
+            if condition.get("type") == "rotation":
+                return True
+        return False
     
     def _parse_time(self, time_str: str) -> time:
         """Parse time string (HH:MM) to time object."""
@@ -181,29 +224,146 @@ class DSLStrategy(TradingStrategy):
     def requires_indicators(self) -> List[str]:
         """
         Return list of indicators required by this DSL strategy.
-        Extracts indicator types from the DSL configuration.
+        
+        For advanced strategies (rotation type), returns empty list because
+        the strategy calculates its own indicators with custom parameters.
+        
+        For simple strategies, extracts indicator types from DSL configuration.
         """
         if not hasattr(self, 'dsl_config') or 'indicators' not in self.dsl_config:
             return []
+        
+        # Advanced strategies calculate their own indicators
+        if hasattr(self, 'is_advanced_strategy') and self.is_advanced_strategy:
+            return []
+        
+        # Map DSL indicator types to registry names for simple strategies
+        type_mapping = {
+            'STOCHASTIC': 'STOCH',  # DSL uses STOCHASTIC, registry uses STOCH
+        }
         
         required = []
         for indicator_config in self.dsl_config['indicators']:
             indicator_type = indicator_config.get('type', '').upper()
             if indicator_type:
-                required.append(indicator_type)
+                # Map to registry name if needed
+                registry_name = type_mapping.get(indicator_type, indicator_type)
+                required.append(registry_name)
         
         return required
+    
+    def _register_indicator_metadata(self):
+        """
+        Dynamically register metadata for all indicators in this strategy.
+        
+        This is critical for strategies with multiple instances of the same indicator type
+        (e.g., Stochastic Quad Rotation with 4 different stochastics). Each instance needs
+        its own metadata entry so the chart engine can route them to separate subplots.
+        """
+        from shared.indicators_metadata import (
+            metadata_registry, IndicatorMetadata, IndicatorType, ScaleType,
+            ReferenceLine, ComponentStyle
+        )
+        
+        if not hasattr(self, 'dsl_config') or 'indicators' not in self.dsl_config:
+            return
+        
+        for indicator in self.dsl_config['indicators']:
+            ind_type = indicator['type']
+            alias = indicator['alias']
+            
+            # Skip if already registered
+            if metadata_registry.get(alias) is not None:
+                continue
+            
+            try:
+                if ind_type == 'STOCHASTIC':
+                    # Get parameters for display in title
+                    params = indicator.get('params', {})
+                    k_period = params.get('k_period', 14)
+                    k_smoothing = params.get('k_smoothing', 1)
+                    d_smoothing = params.get('d_smoothing', 3)
+                    
+                    # Register metadata for this specific stochastic instance
+                    metadata = IndicatorMetadata(
+                        name=alias,  # Use alias as the name (e.g., "fast", "med_fast")
+                        indicator_type=IndicatorType.OSCILLATOR,
+                        scale_type=ScaleType.FIXED,
+                        scale_min=0,
+                        scale_max=100,
+                        reference_lines=[
+                            ReferenceLine(value=80, color="#F44336", label="Overbought"),
+                            ReferenceLine(value=20, color="#4CAF50", label="Oversold")
+                        ],
+                        components={
+                            "k": ComponentStyle(color="#2196F3", label=f"%K({k_period},{k_smoothing})", width=2.5),
+                            "d": ComponentStyle(color="#FF9800", label=f"%D({d_smoothing})", width=2.0, dash="dash")
+                        }
+                    )
+                    metadata_registry.register(metadata)
+                    logger.info(f"Registered metadata for stochastic indicator: {alias} ({k_period},{k_smoothing},{d_smoothing})")
+                    
+                elif ind_type == 'RSI':
+                    period = indicator.get('period', 14)
+                    metadata = IndicatorMetadata(
+                        name=alias,
+                        indicator_type=IndicatorType.OSCILLATOR,
+                        scale_type=ScaleType.FIXED,
+                        scale_min=0,
+                        scale_max=100,
+                        reference_lines=[
+                            ReferenceLine(value=70, color="#F44336", label="Overbought"),
+                            ReferenceLine(value=30, color="#4CAF50", label="Oversold")
+                        ],
+                        components={
+                            "rsi": ComponentStyle(color="#9C27B0", label=f"RSI({period})", width=2.5)
+                        }
+                    )
+                    metadata_registry.register(metadata)
+                    logger.info(f"Registered metadata for RSI indicator: {alias} (period={period})")
+                    
+                elif ind_type == 'MACD':
+                    fast_period = indicator.get('fast_period', 12)
+                    slow_period = indicator.get('slow_period', 26)
+                    signal_period = indicator.get('signal_period', 9)
+                    
+                    metadata = IndicatorMetadata(
+                        name=alias,
+                        indicator_type=IndicatorType.OSCILLATOR,
+                        scale_type=ScaleType.AUTO,
+                        zero_line=True,
+                        components={
+                            "macd": ComponentStyle(color="#2196F3", label=f"MACD({fast_period},{slow_period})", width=2.5),
+                            "signal": ComponentStyle(color="#FF5722", label=f"Signal({signal_period})", width=2.0),
+                            "histogram": ComponentStyle(color="#9E9E9E", label="Histogram", line_type="bar")
+                        }
+                    )
+                    metadata_registry.register(metadata)
+                    logger.info(f"Registered metadata for MACD indicator: {alias} ({fast_period},{slow_period},{signal_period})")
+                    
+                # SMA and EMA are overlays, they use the default metadata
+                # No need to register custom metadata for them
+                    
+            except Exception as e:
+                logger.error(f"Error registering metadata for {alias} ({ind_type}): {e}")
     
     def get_indicator_series(self, candles: List) -> Dict[str, List[float]]:
         """
         Calculate full indicator series for charting.
         Returns time series data for all configured indicators.
+        
+        For strategies with multiple instances of the same indicator type (e.g., 4 stochastics),
+        this method dynamically registers metadata for each instance so the chart engine
+        can properly route them to separate subplots.
         """
         import pandas as pd
         import ta
         
         if not candles or not hasattr(self, 'dsl_config') or 'indicators' not in self.dsl_config:
             return {}
+        
+        # Register metadata for all indicators before calculating
+        self._register_indicator_metadata()
         
         # Convert candles to DataFrame
         df = pd.DataFrame([{
@@ -253,6 +413,38 @@ class DSLStrategy(TradingStrategy):
                         indicator_series[f"{alias}"] = macd_indicator.macd().fillna(0).tolist()
                         indicator_series[f"{alias}_signal"] = macd_indicator.macd_signal().fillna(0).tolist()
                         indicator_series[f"{alias}_histogram"] = macd_indicator.macd_diff().fillna(0).tolist()
+                elif ind_type == 'STOCHASTIC':
+                    # Get parameters from params dict
+                    params = indicator.get('params', {})
+                    k_period = params.get('k_period', 14)
+                    k_smoothing = params.get('k_smoothing', 1)
+                    d_smoothing = params.get('d_smoothing', 3)
+                    
+                    min_required = k_period + max(k_smoothing, d_smoothing)
+                    if len(df) >= min_required:
+                        # Calculate raw %K
+                        df_stoch = df.copy()
+                        df_stoch['lowest_low'] = df_stoch['low'].rolling(window=k_period).min()
+                        df_stoch['highest_high'] = df_stoch['high'].rolling(window=k_period).max()
+                        df_stoch['range'] = df_stoch['highest_high'] - df_stoch['lowest_low']
+                        df_stoch['range'] = df_stoch['range'].replace(0, 1e-10)
+                        df_stoch['k_raw'] = ((df_stoch['close'] - df_stoch['lowest_low']) / df_stoch['range']) * 100
+                        
+                        # Apply %K smoothing if needed
+                        if k_smoothing > 1:
+                            df_stoch['k'] = df_stoch['k_raw'].rolling(window=k_smoothing).mean()
+                        else:
+                            df_stoch['k'] = df_stoch['k_raw']
+                        
+                        # Calculate %D (signal line)
+                        df_stoch['d'] = df_stoch['k'].rolling(window=d_smoothing).mean()
+                        
+                        # Clamp values to 0-100 range and convert to list
+                        k_series = df_stoch['k'].fillna(50).clip(0, 100).tolist()
+                        d_series = df_stoch['d'].fillna(50).clip(0, 100).tolist()
+                        
+                        indicator_series[f"{alias}"] = k_series
+                        indicator_series[f"{alias}_d"] = d_series
             except Exception as e:
                 import logging
                 logging.warning(f"Error calculating {alias} series ({ind_type}): {e}")
@@ -506,6 +698,20 @@ class DSLStrategy(TradingStrategy):
         Returns:
             TradeDirection or None if no condition is met
         """
+        # CRITICAL DEBUG
+        try:
+            with open('/tmp/evaluate_conditions_debug.txt', 'a') as f:
+                f.write(f"\n=== _evaluate_indicator_conditions CALLED ===\n")
+                f.write(f"Has current values: {bool(self.indicator_values)}\n")
+                f.write(f"Has previous values: {bool(self.previous_indicator_values)}\n")
+                if self.indicator_values:
+                    f.write(f"Current: {self.indicator_values}\n")
+                if self.previous_indicator_values:
+                    f.write(f"Previous: {self.previous_indicator_values}\n")
+                f.flush()
+        except:
+            pass
+        
         diagnostic_logger.debug(f"--- _evaluate_indicator_conditions START ---")
         
         # Need current and previous values for crossover detection
@@ -513,6 +719,15 @@ class DSLStrategy(TradingStrategy):
             diagnostic_logger.debug(f"Missing indicator values for condition evaluation")
             diagnostic_logger.debug(f"  Current values: {bool(self.indicator_values)}")
             diagnostic_logger.debug(f"  Previous values: {bool(self.previous_indicator_values)}")
+            
+            # CRITICAL DEBUG
+            try:
+                with open('/tmp/evaluate_conditions_debug.txt', 'a') as f:
+                    f.write(f"MISSING VALUES - returning None\n")
+                    f.flush()
+            except:
+                pass
+            
             return None
             
         # Check buy condition
@@ -523,6 +738,11 @@ class DSLStrategy(TradingStrategy):
         
         if buy_result:
             diagnostic_logger.info(f"BUY condition MET!")
+            # Update crossover detector AFTER successful signal
+            if self.is_advanced_strategy and self.crossover_detector:
+                for alias, value in self.indicator_values.items():
+                    if not alias.endswith('_d') and not alias.endswith('_signal') and not alias.endswith('_histogram'):
+                        self.crossover_detector.update(alias, value)
             diagnostic_logger.debug(f"--- _evaluate_indicator_conditions END (BUY) ---")
             return TradeDirection.BUY
             
@@ -534,8 +754,19 @@ class DSLStrategy(TradingStrategy):
         
         if sell_result:
             diagnostic_logger.info(f"SELL condition MET!")
+            # Update crossover detector AFTER successful signal
+            if self.is_advanced_strategy and self.crossover_detector:
+                for alias, value in self.indicator_values.items():
+                    if not alias.endswith('_d') and not alias.endswith('_signal') and not alias.endswith('_histogram'):
+                        self.crossover_detector.update(alias, value)
             diagnostic_logger.debug(f"--- _evaluate_indicator_conditions END (SELL) ---")
             return TradeDirection.SELL
+        
+        # Update crossover detector for next iteration even if no signal
+        if self.is_advanced_strategy and self.crossover_detector:
+            for alias, value in self.indicator_values.items():
+                if not alias.endswith('_d') and not alias.endswith('_signal') and not alias.endswith('_histogram'):
+                    self.crossover_detector.update(alias, value)
         
         diagnostic_logger.debug(f"No conditions met")
         diagnostic_logger.debug(f"--- _evaluate_indicator_conditions END (None) ---")
@@ -551,6 +782,11 @@ class DSLStrategy(TradingStrategy):
         Returns:
             bool: True if condition is met
         """
+        # Check if this is a rotation-type condition (advanced strategy)
+        if condition_config.get("type") == "rotation":
+            return self._check_rotation_condition(condition_config)
+        
+        # Simple condition (original logic)
         compare_str = condition_config["compare"]
         needs_crossover = condition_config.get("crossover", False)
         
@@ -584,6 +820,56 @@ class DSLStrategy(TradingStrategy):
             diagnostic_logger.info(f"      Previous: {previous_result} -> Current: {current_result}")
         
         return crossover_detected
+    
+    def _check_rotation_condition(self, condition_config: Dict[str, Any]) -> bool:
+        """
+        Check if a rotation condition is met (zone + crossover trigger).
+        
+        CRITICAL: Zone must be checked with PREVIOUS values, crossover with CURRENT values.
+        This is because the crossover moves the indicator OUT of the zone.
+        
+        Args:
+            condition_config: Rotation condition configuration
+            
+        Returns:
+            bool: True if rotation condition is met
+        """
+        if not self.is_advanced_strategy or not self.condition_evaluator or not self.crossover_detector:
+            diagnostic_logger.error("Rotation condition requires advanced strategy components")
+            return False
+        
+        # CRITICAL DEBUG: Direct file write
+        try:
+            with open('/tmp/rotation_debug.txt', 'a') as f:
+                f.write(f"\n=== ROTATION CHECK ===\n")
+                f.write(f"Previous values: {self.previous_indicator_values}\n")
+                f.write(f"Current values: {self.indicator_values}\n")
+                f.flush()
+        except:
+            pass
+        
+        diagnostic_logger.debug(f"  _check_rotation_condition:")
+        diagnostic_logger.debug(f"    Condition config: {condition_config}")
+        
+        # CRITICAL FIX: Check zone with PREVIOUS values, trigger with CURRENT values
+        # The zone condition must be met BEFORE the crossover happens
+        result = self.condition_evaluator.evaluate_rotation_condition(
+            condition_config,
+            self.previous_indicator_values,  # Use PREVIOUS for zone check
+            self.indicator_values,            # Use CURRENT for crossover check
+            self.crossover_detector
+        )
+        
+        # CRITICAL DEBUG: Log result
+        try:
+            with open('/tmp/rotation_debug.txt', 'a') as f:
+                f.write(f"Result: {result}\n")
+                f.flush()
+        except:
+            pass
+        
+        diagnostic_logger.debug(f"    Rotation condition result: {result}")
+        return result
     
     def _evaluate_condition(self, condition_str: str, context: Dict[str, float]) -> bool:
         """
@@ -710,6 +996,16 @@ class DSLStrategy(TradingStrategy):
     
     def on_candle_processed(self, context: StrategyContext) -> None:
         """Called after each candle is processed."""
+        # CRITICAL DEBUG: Write to separate file
+        try:
+            with open('/tmp/dsl_candle_debug.txt', 'a') as f:
+                f.write(f"CANDLE PROCESSED: {context.current_candle.timestamp}\n")
+                f.flush()
+        except:
+            pass
+        
+        diagnostic_logger.debug(f"!!! on_candle_processed CALLED at {context.current_candle.timestamp} !!!")
+        
         current_date = context.current_candle.timestamp.date()
         
         # Reset daily state at start of new day
@@ -765,6 +1061,17 @@ class DSLStrategy(TradingStrategy):
         
         # Store previous values for crossover detection
         self.previous_indicator_values = self.indicator_values.copy()
+        
+        # CRITICAL DEBUG
+        try:
+            with open('/tmp/indicator_values_debug.txt', 'a') as f:
+                f.write(f"\n=== {candle.timestamp} ===\n")
+                f.write(f"Previous: {self.previous_indicator_values}\n")
+                f.write(f"Current (before calc): {self.indicator_values}\n")
+                f.flush()
+        except:
+            pass
+        
         diagnostic_logger.debug(f"Stored previous indicator values: {self.previous_indicator_values}")
         
         # Calculate each indicator defined in the configuration
@@ -830,9 +1137,60 @@ class DSLStrategy(TradingStrategy):
                             diagnostic_logger.debug(f"    {alias}_histogram = {self.indicator_values[f'{alias}_histogram']:.8f}")
                         else:
                             diagnostic_logger.debug(f"    Insufficient data for MACD (need {slow_period + signal_period}, have {len(df)})")
+                    
+                    elif ind_type == 'STOCHASTIC':
+                        # Stochastic has k_period, k_smoothing, d_smoothing parameters
+                        params = indicator.get('params', {})
+                        k_period = params.get('k_period', 14)
+                        k_smoothing = params.get('k_smoothing', 1)
+                        d_smoothing = params.get('d_smoothing', 3)
+                        
+                        diagnostic_logger.debug(f"    STOCHASTIC params: k_period={k_period}, k_smoothing={k_smoothing}, d_smoothing={d_smoothing}")
+                        
+                        min_required = k_period + max(k_smoothing, d_smoothing)
+                        if len(df) >= min_required:
+                            # Calculate raw %K
+                            df['lowest_low'] = df['low'].rolling(window=k_period).min()
+                            df['highest_high'] = df['high'].rolling(window=k_period).max()
+                            df['range'] = df['highest_high'] - df['lowest_low']
+                            df['range'] = df['range'].replace(0, 1e-10)  # Avoid division by zero
+                            df['k_raw'] = ((df['close'] - df['lowest_low']) / df['range']) * 100
+                            
+                            # Apply %K smoothing if needed
+                            if k_smoothing > 1:
+                                df['k'] = df['k_raw'].rolling(window=k_smoothing).mean()
+                            else:
+                                df['k'] = df['k_raw']
+                            
+                            # Calculate %D (signal line)
+                            df['d'] = df['k'].rolling(window=d_smoothing).mean()
+                            
+                            # Store %K and %D values (clamped to 0-100)
+                            k_value = max(0.0, min(100.0, float(df['k'].iloc[-1])))
+                            d_value = max(0.0, min(100.0, float(df['d'].iloc[-1])))
+                            
+                            self.indicator_values[alias] = k_value
+                            self.indicator_values[f"{alias}_d"] = d_value
+                            
+                            diagnostic_logger.debug(f"    {alias} (%K) = {k_value:.2f}")
+                            diagnostic_logger.debug(f"    {alias}_d (%D) = {d_value:.2f}")
+                            
+                            # Update multi-indicator manager if using advanced strategy
+                            if self.is_advanced_strategy and self.multi_indicator_manager:
+                                self.multi_indicator_manager.update_value(alias, candle.timestamp, k_value)
+                        else:
+                            diagnostic_logger.debug(f"    Insufficient data for STOCHASTIC (need {min_required}, have {len(df)})")
                             
                 except Exception as e:
                     diagnostic_logger.error(f"    Error calculating {alias} ({ind_type}): {e}")
+        
+        # CRITICAL DEBUG: Log final indicator values
+        try:
+            with open('/tmp/indicator_values_debug.txt', 'a') as f:
+                f.write(f"Current (after calc): {self.indicator_values}\n")
+                f.flush()
+        except:
+            pass
         
         diagnostic_logger.debug(f">>> _calculate_indicators END >>>")
         diagnostic_logger.debug(f"")

@@ -1,0 +1,74 @@
+{
+  "name": "Stochastic Quad Rotation",
+  "version": "1.0.0",
+  "description": "Multi-period stochastic rotation strategy using 4 stochastics with different periods. Buys when all 4 are below 20 and fast crosses above. Sells when all 4 are above 80 and fast crosses below.",
+  "indicators": [
+    {
+      "type": "STOCHASTIC",
+      "alias": "fast",
+      "params": {
+        "k_period": 9,
+        "k_smoothing": 1,
+        "d_smoothing": 3
+      }
+    },
+    {
+      "type": "STOCHASTIC",
+      "alias": "med_fast",
+      "params": {
+        "k_period": 14,
+        "k_smoothing": 1,
+        "d_smoothing": 3
+      }
+    },
+    {
+      "type": "STOCHASTIC",
+      "alias": "med_slow",
+      "params": {
+        "k_period": 40,
+        "k_smoothing": 1,
+        "d_smoothing": 4
+      }
+    },
+    {
+      "type": "STOCHASTIC",
+      "alias": "slow",
+      "params": {
+        "k_period": 60,
+        "k_smoothing": 1,
+        "d_smoothing": 10
+      }
+    }
+  ],
+  "conditions": {
+    "buy": {
+      "type": "rotation",
+      "zone": {
+        "all_below": 20,
+        "indicators": ["fast", "med_fast", "med_slow", "slow"]
+      },
+      "trigger": {
+        "indicator": "fast",
+        "crosses_above": 20
+      }
+    },
+    "sell": {
+      "type": "rotation",
+      "zone": {
+        "all_above": 80,
+        "indicators": ["fast", "med_fast", "med_slow", "slow"]
+      },
+      "trigger": {
+        "indicator": "fast",
+        "crosses_below": 80
+      }
+    }
+  },
+  "risk_management": {
+    "stop_loss_pips": 15,
+    "take_profit_pips": 25,
+    "max_daily_trades": 3,
+    "min_pip_distance": 0.0001,
+    "execution_window_minutes": 1440
+  }
+}

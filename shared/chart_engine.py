@@ -107,6 +107,10 @@ class ChartEngine:
                     if indicator_name.endswith('_signal') or indicator_name.endswith('_histogram'):
                         continue
                     
+                    # Skip stochastic %D - it's rendered with the %K line
+                    if indicator_name.endswith('_d'):
+                        continue
+                    
                     # Check if oscillator with error handling
                     is_oscillator = False
                     try:
@@ -484,6 +488,13 @@ class ChartEngine:
                         base_name = indicator_name.replace('_signal', '').replace('_histogram', '')
                         if base_name in indicators or 'macd' in base_name.lower():
                             logger.info(f"Skipping {indicator_name} - will be rendered with MACD line")
+                            continue
+                    
+                    # Skip stochastic %D - it'll be added with the %K line
+                    if indicator_name.endswith('_d'):
+                        base_name = indicator_name.replace('_d', '')
+                        if base_name in indicators:
+                            logger.info(f"Skipping {indicator_name} - will be rendered with {base_name} %K line")
                             continue
                     
                     # Validate indicator data
@@ -1091,9 +1102,139 @@ class ChartEngine:
         metadata
     ):
         """
-        Add a single-component oscillator indicator.
+        Add oscillator indicator with proper component handling.
         
-        This is the standard method for oscillators like RSI, Stochastic, etc.
+        For stochastic indicators, this adds BOTH %K and %D lines.
+        For other oscillators (RSI, etc.), this adds a single line.
+        
+        Args:
+            fig: Plotly figure object
+            indicator_name: Name of the indicator
+            values: List of indicator values (%K for stochastic)
+            timestamps: List of timestamps
+            row: Row number for the subplot
+            metadata: IndicatorMetadata object with styling information
+        """
+        from shared.indicators_metadata import ComponentStyle
+        
+        # Check if this is a stochastic indicator (has both k and d components)
+        is_stochastic = 'k' in metadata.components and 'd' in metadata.components
+        
+        if is_stochastic:
+            # Special handling for stochastic - add both %K and %D lines
+            logger.info(f"Adding stochastic indicator {indicator_name} with %K and %D lines")
+            self._add_stochastic_components(fig, indicator_name, values, timestamps, row, metadata)
+        else:
+            # Standard single-line oscillator (RSI, etc.)
+            self._add_standard_oscillator_line(fig, indicator_name, values, timestamps, row, metadata)
+    
+    def _add_stochastic_components(
+        self,
+        fig,
+        indicator_name: str,
+        k_values: List[float],
+        timestamps: List,
+        row: int,
+        metadata
+    ):
+        """
+        Add stochastic indicator with both %K and %D lines.
+        
+        Looks for the %D values in the stored indicators dictionary using the
+        naming convention: if indicator is "fast", %D is "fast_d".
+        
+        Args:
+            fig: Plotly figure object
+            indicator_name: Name of the indicator (e.g., "fast", "med_fast")
+            k_values: List of %K values
+            timestamps: List of timestamps
+            row: Row number for the subplot
+            metadata: IndicatorMetadata object with styling
+        """
+        from shared.indicators_metadata import ComponentStyle
+        
+        # Get %D values from stored indicators
+        d_values = None
+        stored_indicators = getattr(self, '_current_indicators', {})
+        d_key = f"{indicator_name}_d"
+        
+        if d_key in stored_indicators:
+            d_values = stored_indicators[d_key]
+            logger.info(f"Found %D values for {indicator_name} at key {d_key}")
+        else:
+            logger.warning(f"No %D values found for {indicator_name} (looked for {d_key})")
+            logger.warning(f"Available indicators: {list(stored_indicators.keys())}")
+            # Fall back to single line
+            self._add_standard_oscillator_line(fig, indicator_name, k_values, timestamps, row, metadata)
+            return
+        
+        # Get component styles
+        k_style = metadata.components.get("k", ComponentStyle(color="#2196F3", label="%K", width=2.5))
+        d_style = metadata.components.get("d", ComponentStyle(color="#FF9800", label="%D", width=2.0, dash="dash"))
+        
+        # Filter and align data
+        filtered_k = []
+        filtered_d = []
+        filtered_timestamps = []
+        
+        for i, ts in enumerate(timestamps):
+            k_val = k_values[i] if i < len(k_values) else None
+            d_val = d_values[i] if i < len(d_values) else None
+            
+            # Only include if both values are valid
+            if (k_val is not None and not (isinstance(k_val, float) and k_val != k_val) and
+                d_val is not None and not (isinstance(d_val, float) and d_val != d_val)):
+                filtered_k.append(k_val)
+                filtered_d.append(d_val)
+                filtered_timestamps.append(ts)
+        
+        if len(filtered_timestamps) == 0:
+            logger.warning(f"No valid stochastic values for {indicator_name}, skipping")
+            return
+        
+        logger.info(f"Adding %K line for {indicator_name} with {len(filtered_k)} points")
+        # Add %K line
+        fig.add_trace(
+            go.Scatter(
+                x=filtered_timestamps,
+                y=filtered_k,
+                mode='lines',
+                name=k_style.label,
+                line=dict(color=k_style.color, width=k_style.width),
+                hovertemplate=f'{k_style.label}: %{{y:.2f}}<extra></extra>',
+                showlegend=True
+            ),
+            row=row, col=1
+        )
+        
+        logger.info(f"Adding %D line for {indicator_name} with {len(filtered_d)} points")
+        # Add %D line
+        fig.add_trace(
+            go.Scatter(
+                x=filtered_timestamps,
+                y=filtered_d,
+                mode='lines',
+                name=d_style.label,
+                line=dict(color=d_style.color, width=d_style.width, dash=d_style.dash),
+                hovertemplate=f'{d_style.label}: %{{y:.2f}}<extra></extra>',
+                showlegend=True
+            ),
+            row=row, col=1
+        )
+        
+        logger.info(f"Successfully added both %K and %D lines for {indicator_name}")
+    
+    def _add_standard_oscillator_line(
+        self,
+        fig,
+        indicator_name: str,
+        values: List[float],
+        timestamps: List,
+        row: int,
+        metadata
+    ):
+        """
+        Add a standard single-line oscillator (RSI, etc.).
         
         Args:
             fig: Plotly figure object
@@ -1101,7 +1242,7 @@ class ChartEngine:
             values: List of indicator values
             timestamps: List of timestamps
             row: Row number for the subplot
-            metadata: IndicatorMetadata object with styling information
+            metadata: IndicatorMetadata object with styling
         """
         from shared.indicators_metadata import ComponentStyle
         

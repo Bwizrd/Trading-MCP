@@ -222,6 +222,10 @@ class IndicatorMetadataRegistry:
     
     def _extract_base_name(self, indicator_name: str) -> str:
         """Extract base indicator name from variations like SMA20 → SMA."""
+        # First, try exact match (for DSL strategies with custom aliases like "fast", "med_fast")
+        if indicator_name in self._metadata:
+            return indicator_name
+        
         # Remove numbers and underscores to get base name
         base = re.sub(r'\d+', '', indicator_name)
         base = re.sub(r'_.*', '', base)
@@ -240,6 +244,10 @@ class IndicatorMetadataRegistry:
         # 3. Try original case
         if base in self._metadata:
             return base
+        
+        # 4. Try the original indicator_name as-is (before any transformations)
+        if indicator_name in self._metadata:
+            return indicator_name
         
         # Default to uppercase for consistency
         return base_upper

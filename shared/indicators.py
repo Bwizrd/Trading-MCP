@@ -365,6 +365,105 @@ class MACDCalculator(IndicatorCalculator):
         return getattr(self, '_histogram', {})
 
 
+class StochasticCalculator(IndicatorCalculator):
+    """
+    Stochastic Oscillator calculator.
+    
+    Calculates %K and %D lines for momentum analysis.
+    Formula:
+    - %K = ((Close - Lowest Low) / (Highest High - Lowest Low)) * 100
+    - %K Smoothed = SMA(%K, k_smoothing)
+    - %D = SMA(%K Smoothed, d_smoothing)
+    """
+    
+    def __init__(self, k_period: int = 14, k_smoothing: int = 1, d_smoothing: int = 3):
+        """
+        Initialize Stochastic calculator.
+        
+        Args:
+            k_period: Period for %K calculation (default: 14)
+            k_smoothing: Smoothing period for %K (default: 1, no smoothing)
+            d_smoothing: Smoothing period for %D signal line (default: 3)
+        """
+        self.k_period = k_period
+        self.k_smoothing = k_smoothing
+        self.d_smoothing = d_smoothing
+    
+    def get_name(self) -> str:
+        return f"STOCH{self.k_period}_{self.k_smoothing}_{self.d_smoothing}"
+    
+    def requires_periods(self) -> int:
+        # Need k_period + max(k_smoothing, d_smoothing) for full calculation
+        return self.k_period + max(self.k_smoothing, self.d_smoothing)
+    
+    def get_chart_config(self):
+        """Return chart configuration metadata."""
+        from shared.indicators_metadata import metadata_registry
+        return metadata_registry.get("STOCHASTIC")
+    
+    def calculate(self, candles: List[Candle], **kwargs) -> Dict[datetime, float]:
+        """
+        Calculate Stochastic Oscillator.
+        
+        Returns %K line as the primary value.
+        %D signal line is available via get_d_line().
+        """
+        if len(candles) < self.k_period:
+            return {}
+        
+        results = {}
+        
+        # Convert to pandas for easier calculation
+        df = pd.DataFrame([
+            {
+                'timestamp': c.timestamp,
+                'high': c.high,
+                'low': c.low,
+                'close': c.close
+            }
+            for c in candles
+        ])
+        
+        # Calculate raw %K
+        df['lowest_low'] = df['low'].rolling(window=self.k_period).min()
+        df['highest_high'] = df['high'].rolling(window=self.k_period).max()
+        
+        # Handle division by zero (when high == low)
+        df['range'] = df['highest_high'] - df['lowest_low']
+        df['range'] = df['range'].replace(0, 1e-10)  # Avoid division by zero
+        
+        df['k_raw'] = ((df['close'] - df['lowest_low']) / df['range']) * 100
+        
+        # Apply %K smoothing if needed
+        if self.k_smoothing > 1:
+            df['k'] = df['k_raw'].rolling(window=self.k_smoothing).mean()
+        else:
+            df['k'] = df['k_raw']
+        
+        # Calculate %D (signal line)
+        df['d'] = df['k'].rolling(window=self.d_smoothing).mean()
+        
+        # Store %D line for later retrieval
+        self._d_line = {}
+        
+        # Convert back to dictionary, skipping NaN values
+        for _, row in df.iterrows():
+            if pd.notna(row['k']) and pd.notna(row['d']):
+                timestamp = row['timestamp']
+                # Clamp values to 0-100 range
+                k_value = max(0.0, min(100.0, float(row['k'])))
+                d_value = max(0.0, min(100.0, float(row['d'])))
+                
+                results[timestamp] = k_value
+                self._d_line[timestamp] = d_value
+        
+        return results
+    
+    def get_d_line(self) -> Dict[datetime, float]:
+        """Get the %D signal line values."""
+        return getattr(self, '_d_line', {})
+
+
 class IndicatorRegistry:
     """
     Registry for available indicator calculators.
@@ -391,6 +490,9 @@ class IndicatorRegistry:
         # Oscillators
         self.register("RSI", RSICalculator(14))
         self.register("RSI21", RSICalculator(21))
+        
+        # Stochastic Oscillators
+        self.register("STOCH", StochasticCalculator(14, 1, 3))  # Standard Stochastic
         
         # MACD
         self.register("MACD", MACDCalculator(12, 26, 9))  # Standard MACD

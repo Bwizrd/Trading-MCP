@@ -346,6 +346,12 @@ def integrate_dsl_with_strategy_registry(strategy_registry, dsl_loader: DSLLoade
                     return self._dsl_strategy.on_trade_closed(trade, context)
                 
                 def on_candle_processed(self, context) -> None:
+                    # CRITICAL DEBUG
+                    try:
+                        with open('/tmp/dsl_debug.log', 'a') as f:
+                            f.write(f"WRAPPER on_candle_processed called at {context.current_candle.timestamp}\n")
+                    except:
+                        pass
                     return self._dsl_strategy.on_candle_processed(context)
                 
                 def get_indicator_series(self, candles):

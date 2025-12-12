@@ -407,7 +407,7 @@ def _validate_indicators_configuration(config: Dict[str, Any]) -> None:
         raise ValueError("'indicators' must be a non-empty list")
     
     required_indicator_fields = ["type", "alias"]
-    valid_indicator_types = ["SMA", "EMA", "RSI", "MACD"]
+    valid_indicator_types = ["SMA", "EMA", "RSI", "MACD", "STOCHASTIC"]
     
     aliases = set()
     for i, indicator in enumerate(indicators):
@@ -461,26 +461,95 @@ def _validate_indicator_conditions(config: Dict[str, Any]) -> None:
     for condition_type in ["buy", "sell"]:
         condition = conditions[condition_type]
         
-        if "compare" not in condition:
-            raise ValueError(f"'{condition_type}' condition must have 'compare' field")
-        
-        if not isinstance(condition["compare"], str):
-            raise ValueError(f"'{condition_type}' compare must be a string")
-        
-        # Validate that comparison uses valid indicator aliases
-        compare_str = condition["compare"]
-        
-        # Check that at least one indicator alias is referenced
-        aliases_found = [alias for alias in indicator_aliases if alias in compare_str]
-        if not aliases_found:
-            raise ValueError(f"'{condition_type}' condition must reference at least one indicator alias: {list(indicator_aliases)}")
-        
-        # Validate comparison operators
-        valid_operators = [">", "<", ">=", "<=", "==", "!="]
-        has_operator = any(op in compare_str for op in valid_operators)
-        
-        if not has_operator:
-            raise ValueError(f"'{condition_type}' condition must contain a comparison operator: {valid_operators}")
+        # Check if this is a rotation-type condition (advanced)
+        if condition.get("type") == "rotation":
+            _validate_rotation_condition(condition, condition_type, indicator_aliases)
+        else:
+            # Simple condition validation (original logic)
+            if "compare" not in condition:
+                raise ValueError(f"'{condition_type}' condition must have 'compare' field")
+            
+            if not isinstance(condition["compare"], str):
+                raise ValueError(f"'{condition_type}' compare must be a string")
+            
+            # Validate that comparison uses valid indicator aliases
+            compare_str = condition["compare"]
+            
+            # Check that at least one indicator alias is referenced
+            aliases_found = [alias for alias in indicator_aliases if alias in compare_str]
+            if not aliases_found:
+                raise ValueError(f"'{condition_type}' condition must reference at least one indicator alias: {list(indicator_aliases)}")
+            
+            # Validate comparison operators
+            valid_operators = [">", "<", ">=", "<=", "==", "!="]
+            has_operator = any(op in compare_str for op in valid_operators)
+            
+            if not has_operator:
+                raise ValueError(f"'{condition_type}' condition must contain a comparison operator: {valid_operators}")
+
+
+def _validate_rotation_condition(condition: Dict[str, Any], condition_type: str, indicator_aliases: set) -> None:
+    """Validate a rotation-type condition (zone + crossover trigger)."""
+    # Validate zone specification
+    if "zone" not in condition:
+        raise ValueError(f"'{condition_type}' rotation condition must have 'zone' field")
+    
+    zone = condition["zone"]
+    
+    # Must have either all_above or all_below
+    if "all_above" not in zone and "all_below" not in zone:
+        raise ValueError(f"'{condition_type}' zone must have either 'all_above' or 'all_below' field")
+    
+    # Cannot have both
+    if "all_above" in zone and "all_below" in zone:
+        raise ValueError(f"'{condition_type}' zone cannot have both 'all_above' and 'all_below'")
+    
+    # Validate threshold is a number
+    threshold_key = "all_above" if "all_above" in zone else "all_below"
+    threshold = zone[threshold_key]
+    if not isinstance(threshold, (int, float)):
+        raise ValueError(f"'{condition_type}' zone {threshold_key} must be a number")
+    
+    # Validate indicators list
+    if "indicators" not in zone:
+        raise ValueError(f"'{condition_type}' zone must have 'indicators' list")
+    
+    zone_indicators = zone["indicators"]
+    if not isinstance(zone_indicators, list) or not zone_indicators:
+        raise ValueError(f"'{condition_type}' zone indicators must be a non-empty list")
+    
+    # Validate all indicators exist
+    for alias in zone_indicators:
+        if alias not in indicator_aliases:
+            raise ValueError(f"'{condition_type}' zone references unknown indicator '{alias}'. Available: {list(indicator_aliases)}")
+    
+    # Validate trigger specification
+    if "trigger" not in condition:
+        raise ValueError(f"'{condition_type}' rotation condition must have 'trigger' field")
+    
+    trigger = condition["trigger"]
+    
+    # Validate trigger indicator
+    if "indicator" not in trigger:
+        raise ValueError(f"'{condition_type}' trigger must have 'indicator' field")
+    
+    trigger_indicator = trigger["indicator"]
+    if trigger_indicator not in indicator_aliases:
+        raise ValueError(f"'{condition_type}' trigger references unknown indicator '{trigger_indicator}'. Available: {list(indicator_aliases)}")
+    
+    # Must have either crosses_above or crosses_below
+    if "crosses_above" not in trigger and "crosses_below" not in trigger:
+        raise ValueError(f"'{condition_type}' trigger must have either 'crosses_above' or 'crosses_below' field")
+    
+    # Cannot have both
+    if "crosses_above" in trigger and "crosses_below" in trigger:
+        raise ValueError(f"'{condition_type}' trigger cannot have both 'crosses_above' and 'crosses_below'")
+    
+    # Validate threshold is a number
+    cross_key = "crosses_above" if "crosses_above" in trigger else "crosses_below"
+    cross_threshold = trigger[cross_key]
+    if not isinstance(cross_threshold, (int, float)):
+        raise ValueError(f"'{condition_type}' trigger {cross_key} must be a number")
 
 
 def get_dsl_schema() -> Dict[str, Any]:
