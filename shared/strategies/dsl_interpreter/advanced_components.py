@@ -244,16 +244,6 @@ class ConditionEvaluator:
         Returns:
             True if both zone and trigger conditions are met
         """
-        # CRITICAL DEBUG: Direct file write
-        try:
-            with open('/tmp/rotation_debug.txt', 'a') as f:
-                f.write(f"evaluate_rotation_condition called\n")
-                f.write(f"  Zone spec: {condition.get('zone')}\n")
-                f.write(f"  Trigger spec: {condition.get('trigger')}\n")
-                f.flush()
-        except:
-            pass
-        
         # Check zone condition with PREVIOUS values
         zone_spec = condition.get("zone")
         if not zone_spec:
@@ -261,14 +251,6 @@ class ConditionEvaluator:
             return False
         
         zone_met = self.evaluate_zone(zone_spec, previous_indicator_values)
-        
-        # CRITICAL DEBUG
-        try:
-            with open('/tmp/rotation_debug.txt', 'a') as f:
-                f.write(f"  Zone met (previous values): {zone_met}\n")
-                f.flush()
-        except:
-            pass
         
         diagnostic_logger.debug(f"    Zone condition (using previous values): {zone_met}")
         diagnostic_logger.debug(f"    Previous values: {previous_indicator_values}")

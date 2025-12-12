@@ -174,6 +174,18 @@ class UniversalBacktestEngine:
                 
                 logger.info(f"Prepared {len(indicators_for_chart)} indicators for chart generation")
             
+            # For DSL strategies with get_indicator_series, extract their indicators
+            if hasattr(strategy, 'get_indicator_series'):
+                try:
+                    logger.info("Extracting indicators from DSL strategy...")
+                    dsl_indicators = strategy.get_indicator_series(strategy_candles)
+                    if dsl_indicators:
+                        # Merge DSL indicators with existing indicators
+                        indicators_for_chart.update(dsl_indicators)
+                        logger.info(f"Added {len(dsl_indicators)} DSL indicators: {list(dsl_indicators.keys())}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract DSL indicators: {e}")
+            
             results = BacktestResults(
                 strategy_name=strategy.get_name(),
                 strategy_version=strategy.get_version(),
