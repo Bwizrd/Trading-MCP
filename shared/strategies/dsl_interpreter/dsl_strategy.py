@@ -120,6 +120,10 @@ class DSLStrategy(TradingStrategy):
         self.min_pip_distance = risk_mgmt.get("min_pip_distance", 0.0001)
         self.execution_window_minutes = risk_mgmt.get("execution_window_minutes", 1440)
         
+        # Trend strength filter (for reversal strategies)
+        self.min_trend_range_pips = risk_mgmt.get("min_trend_range_pips", 0.0)  # 0 = disabled
+        self.trend_lookback_minutes = risk_mgmt.get("trend_lookback_minutes", 10)
+        
         # Strategy state
         self.daily_trade_count = 0
         self.last_trade_date = None
@@ -572,6 +576,27 @@ class DSLStrategy(TradingStrategy):
         if signal_direction is None:
             diagnostic_logger.debug(f"=== _generate_indicator_signal END (no signal) ===")
             return None
+        
+        # TREND STRENGTH FILTER: Check if there was sufficient trend before the signal
+        # This filters out signals in choppy/sideways markets where there's no real trend to reverse from
+        if self.min_trend_range_pips > 0:
+            trend_strength = self._calculate_trend_strength()
+            if trend_strength:
+                diagnostic_logger.debug(f"Trend strength check:")
+                diagnostic_logger.debug(f"  Range: {trend_strength['range']:.2f} pips (min required: {self.min_trend_range_pips})")
+                diagnostic_logger.debug(f"  Change: {trend_strength['change']:.2f} pips")
+                diagnostic_logger.debug(f"  Price: {trend_strength['start_price']:.2f} → {trend_strength['end_price']:.2f}")
+                
+                if trend_strength['range'] < self.min_trend_range_pips:
+                    diagnostic_logger.info(f"*** SIGNAL REJECTED: Insufficient trend strength ***")
+                    diagnostic_logger.info(f"    Range: {trend_strength['range']:.2f} pips < {self.min_trend_range_pips} pips (min required)")
+                    diagnostic_logger.info(f"    Market is too choppy/sideways - no real trend to reverse from")
+                    diagnostic_logger.debug(f"=== _generate_indicator_signal END (filtered by trend strength) ===")
+                    return None
+                else:
+                    diagnostic_logger.info(f"✓ Trend strength check passed: {trend_strength['range']:.2f} pips >= {self.min_trend_range_pips} pips")
+            else:
+                diagnostic_logger.debug(f"Trend strength check skipped: insufficient candle history")
             
         # Calculate signal strength - for indicators, use distance between MAs
         strength = self._calculate_indicator_signal_strength()
@@ -703,6 +728,47 @@ class DSLStrategy(TradingStrategy):
             return candle.close
         else:
             raise ValueError(f"Invalid price type: {price_type}")
+    
+    def _calculate_trend_strength(self) -> Optional[Dict[str, float]]:
+        """
+        Calculate trend strength metrics for the lookback period.
+        
+        Used to filter out signals in choppy/sideways markets where there's
+        no real trend to reverse from.
+        
+        Returns:
+            Dict with 'range' and 'change' in pips, or None if insufficient data
+        """
+        if not self.candle_history or len(self.candle_history) < self.trend_lookback_minutes:
+            return None
+        
+        # Get recent candles for lookback period
+        recent_candles = self.candle_history[-self.trend_lookback_minutes:]
+        
+        # Extract prices (handle both Candle objects and dicts)
+        prices = []
+        for c in recent_candles:
+            if hasattr(c, 'close'):
+                prices.append(c.close)
+            elif isinstance(c, dict):
+                prices.append(c['close'])
+            else:
+                return None  # Unknown format
+        
+        # Calculate price range (high - low)
+        price_high = max(prices)
+        price_low = min(prices)
+        price_range = price_high - price_low
+        
+        # Calculate price change (absolute movement from start to end)
+        price_change = abs(prices[-1] - prices[0])
+        
+        return {
+            'range': price_range,
+            'change': price_change,
+            'start_price': prices[0],
+            'end_price': prices[-1]
+        }
     
     def _evaluate_conditions(self, signal_price: float, reference_price: float) -> Optional[TradeDirection]:
         """
