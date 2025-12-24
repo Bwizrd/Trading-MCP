@@ -1719,6 +1719,7 @@ class ChartEngine:
         trades_section = f"""
     <div style="margin: 60px 20px 20px 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 20px;">
         <h2>📊 Trade History & Performance</h2>
+        <button class="download-btn" onclick="downloadTradesAsText()">📥 Download Trades as Text File</button>
         {trades_table_html}
     </div>
     <style>
@@ -1750,7 +1751,92 @@ class ChartEngine:
         .breakeven {{ color: #FF9800; font-weight: bold; }}
         .buy {{ color: #2196F3; }}
         .sell {{ color: #FF5722; }}
+        .download-btn {{
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }}
+        .download-btn:hover {{
+            background: linear-gradient(135deg, #45a049 0%, #3d8b40 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }}
+        .download-btn:active {{
+            transform: translateY(0);
+        }}
     </style>
+    <script>
+        function downloadTradesAsText() {{
+            const table = document.querySelector('.trades-table');
+            const rows = table.querySelectorAll('tr');
+            let textContent = '';
+            
+            // Add header with backtest info
+            textContent += '=' .repeat(100) + '\\n';
+            textContent += 'BACKTEST TRADE HISTORY\\n';
+            textContent += '=' .repeat(100) + '\\n';
+            textContent += 'Strategy: {strategy_name}\\n';
+            textContent += 'Symbol: {symbol}\\n';
+            textContent += 'Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\\n';
+            textContent += '=' .repeat(100) + '\\n\\n';
+            
+            // Add summary from the paragraph at bottom of table
+            const summaryP = document.querySelector('.trades-table').nextElementSibling;
+            if (summaryP) {{
+                textContent += 'SUMMARY\\n';
+                textContent += '-' .repeat(100) + '\\n';
+                textContent += summaryP.textContent.trim().replace(/\\s+/g, ' ') + '\\n';
+                textContent += '=' .repeat(100) + '\\n\\n';
+            }}
+            
+            // Add table data
+            textContent += 'TRADE DETAILS\\n';
+            textContent += '-' .repeat(100) + '\\n';
+            
+            rows.forEach((row, index) => {{
+                const cells = row.querySelectorAll('th, td');
+                const rowData = Array.from(cells).map(cell => {{
+                    let text = cell.textContent.trim();
+                    // Pad cells for alignment
+                    if (index === 0) {{
+                        // Header row
+                        return text.padEnd(20);
+                    }} else {{
+                        return text.padEnd(20);
+                    }}
+                }}).join(' | ');
+                
+                textContent += rowData + '\\n';
+                
+                // Add separator after header
+                if (index === 0) {{
+                    textContent += '-' .repeat(100) + '\\n';
+                }}
+            }});
+            
+            textContent += '=' .repeat(100) + '\\n';
+            textContent += 'End of Report\\n';
+            
+            // Create blob and download
+            const blob = new Blob([textContent], {{ type: 'text/plain' }});
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'trades_{clean_symbol}_{clean_strategy}_{timestamp}.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }}
+    </script>
 """
         
         html_content = html_content.replace('</body>', f'{trades_section}</body>')

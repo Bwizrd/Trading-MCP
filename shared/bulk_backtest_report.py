@@ -300,6 +300,30 @@ class BulkBacktestReportGenerator:
         .highlight-card .detail strong {{
             color: #e2e8f0;
         }}
+        
+        .download-btn {{
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s;
+        }}
+        
+        .download-btn:hover {{
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+        }}
+        
+        .download-btn:active {{
+            transform: translateY(0);
+        }}
     </style>
 </head>
 <body>
@@ -349,6 +373,7 @@ class BulkBacktestReportGenerator:
         
         <div class="results-section">
             <h2>Detailed Results</h2>
+            <button class="download-btn" onclick="downloadTableAsText()">📥 Download Table as Text File</button>
             <div class="table-container">
                 <table id="resultsTable">
                     <thead>
@@ -400,6 +425,70 @@ class BulkBacktestReportGenerator:
             }});
             
             rows.forEach(row => tbody.appendChild(row));
+        }}
+        
+        function downloadTableAsText() {{
+            const table = document.getElementById('resultsTable');
+            const rows = table.querySelectorAll('tr');
+            let textContent = '';
+            
+            // Add header with report info
+            textContent += '=' .repeat(100) + '\\n';
+            textContent += 'BULK BACKTEST REPORT\\n';
+            textContent += '=' .repeat(100) + '\\n';
+            textContent += 'Strategy: {strategy_name}\\n';
+            textContent += 'Period: {start_date} to {end_date}\\n';
+            textContent += 'Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\\n';
+            textContent += '=' .repeat(100) + '\\n\\n';
+            
+            // Add summary statistics
+            textContent += 'SUMMARY STATISTICS\\n';
+            textContent += '-' .repeat(100) + '\\n';
+            textContent += 'Total Tests: {summary['total_tests']}\\n';
+            textContent += 'Profitable: {summary['profitable_count']} ({summary['profitable_pct']:.1f}%)\\n';
+            textContent += 'Total Pips: {summary['total_pips']:+.1f}\\n';
+            textContent += 'Avg Win Rate: {summary['avg_win_rate']*100:.1f}%\\n';
+            textContent += 'Avg Profit Factor: {summary['avg_profit_factor']:.2f}\\n';
+            textContent += '=' .repeat(100) + '\\n\\n';
+            
+            // Add table data
+            textContent += 'DETAILED RESULTS\\n';
+            textContent += '-' .repeat(100) + '\\n';
+            
+            rows.forEach((row, index) => {{
+                const cells = row.querySelectorAll('th, td');
+                const rowData = Array.from(cells).map(cell => {{
+                    let text = cell.textContent.trim();
+                    // Pad cells for alignment
+                    if (index === 0) {{
+                        // Header row - pad more
+                        return text.padEnd(15);
+                    }} else {{
+                        return text.padEnd(15);
+                    }}
+                }}).join(' | ');
+                
+                textContent += rowData + '\\n';
+                
+                // Add separator after header
+                if (index === 0) {{
+                    textContent += '-' .repeat(100) + '\\n';
+                }}
+            }});
+            
+            textContent += '=' .repeat(100) + '\\n';
+            textContent += 'End of Report\\n';
+            
+            // Create blob and download
+            const blob = new Blob([textContent], {{ type: 'text/plain' }});
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'bulk_backtest_{strategy_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         }}
     </script>
 </body>
