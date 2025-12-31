@@ -1694,9 +1694,18 @@ class ChartEngine:
         symbol = backtest_results.configuration.symbol if hasattr(backtest_results, 'configuration') else 'UNKNOWN'
         strategy_name = backtest_results.strategy_name if hasattr(backtest_results, 'strategy_name') else title
         
+        # Get date range from configuration
+        start_date = backtest_results.configuration.start_date if hasattr(backtest_results, 'configuration') else 'UNKNOWN'
+        end_date = backtest_results.configuration.end_date if hasattr(backtest_results, 'configuration') else 'UNKNOWN'
+        timeframe = backtest_results.configuration.timeframe if hasattr(backtest_results, 'configuration') else '1m'
+        
         # Create clean filename
         clean_symbol = sanitize_symbol(symbol)
         clean_strategy = strategy_name.replace(' ', '_').replace('-', '_').upper()
+        
+        # Create unique run_id from timestamp
+        run_id = f"{clean_symbol}_{timestamp}"
+        
         filename = f"{clean_symbol}_{clean_strategy}_{timestamp}.html"
         
         chart_path = self.output_dir / filename
@@ -1719,7 +1728,11 @@ class ChartEngine:
         trades_section = f"""
     <div style="margin: 60px 20px 20px 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 20px;">
         <h2>📊 Trade History & Performance</h2>
-        <button class="download-btn" onclick="downloadTradesAsText()">📥 Download Trades as Text File</button>
+        <div style="margin-bottom: 20px;">
+            <button class="download-btn" onclick="downloadTradesAsText()">📥 Download Trades as Text File</button>
+            <button class="notion-btn" onclick="postToNotion()">📝 Post to Notion</button>
+            <span id="notionStatus" style="margin-left: 15px; font-weight: bold;"></span>
+        </div>
         {trades_table_html}
     </div>
     <style>
@@ -1760,7 +1773,7 @@ class ChartEngine:
             font-size: 1em;
             font-weight: 600;
             cursor: pointer;
-            margin-bottom: 20px;
+            margin-right: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             transition: all 0.2s;
         }}
@@ -1771,6 +1784,31 @@ class ChartEngine:
         }}
         .download-btn:active {{
             transform: translateY(0);
+        }}
+        .notion-btn {{
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }}
+        .notion-btn:hover {{
+            background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }}
+        .notion-btn:active {{
+            transform: translateY(0);
+        }}
+        .notion-btn:disabled {{
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
         }}
     </style>
     <script>
@@ -1835,6 +1873,94 @@ class ChartEngine:
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
+        }}
+        
+        async function postToNotion() {{
+            const statusEl = document.getElementById('notionStatus');
+            const notionBtn = document.querySelector('.notion-btn');
+            
+            // Disable button and show loading
+            notionBtn.disabled = true;
+            statusEl.textContent = '⏳ Posting...';
+            statusEl.style.color = '#FF9800';
+            
+            try {{
+                // Extract trade data from table
+                const table = document.querySelector('.trades-table');
+                const rows = Array.from(table.querySelectorAll('tbody tr'));
+                
+                const trades = rows.map(row => {{
+                    const cells = row.querySelectorAll('td');
+                    return {{
+                        run_id: '{run_id}',
+                        number: cells[0].textContent.trim(),
+                        entry_time: cells[1].textContent.trim(),
+                        direction: cells[2].textContent.trim(),
+                        entry_price: cells[3].textContent.trim(),
+                        exit_time: cells[4].textContent.trim(),
+                        exit_price: cells[5].textContent.trim(),
+                        duration: cells[6].textContent.trim(),
+                        pips: cells[7].textContent.trim(),
+                        exit_reason: cells[8].textContent.trim()
+                    }};
+                }});
+                
+                // Extract summary data
+                const summaryP = document.querySelector('.trades-table').nextElementSibling;
+                const summaryText = summaryP ? summaryP.textContent : '';
+                
+                // Parse summary
+                const totalTrades = trades.length;
+                const winners = trades.filter(t => parseFloat(t.pips) > 0).length;
+                const losers = trades.filter(t => parseFloat(t.pips) < 0).length;
+                const totalPips = trades.reduce((sum, t) => sum + parseFloat(t.pips), 0);
+                
+                // Prepare payload
+                const payload = {{
+                    run_id: '{run_id}',
+                    strategy: '{strategy_name}',
+                    symbol: '{symbol}',
+                    timeframe: '{timeframe}',
+                    period: '{start_date} to {end_date}',
+                    start_date: '{start_date}',
+                    end_date: '{end_date}',
+                    generated: '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}',
+                    summary: {{
+                        total_trades: totalTrades,
+                        winners: winners,
+                        losers: losers,
+                        win_rate: ((winners / totalTrades) * 100).toFixed(1) + '%',
+                        total_pips: totalPips.toFixed(1)
+                    }},
+                    trades: trades
+                }};
+                
+                // Post to endpoint
+                const response = await fetch('http://localhost:8000/notion/backtest-result', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify(payload)
+                }});
+                
+                if (response.ok) {{
+                    const result = await response.json();
+                    statusEl.textContent = '✅ Posted to Notion!';
+                    statusEl.style.color = '#4CAF50';
+                    setTimeout(() => {{
+                        statusEl.textContent = '';
+                        notionBtn.disabled = false;
+                    }}, 3000);
+                }} else {{
+                    throw new Error(`HTTP ${{response.status}}: ${{response.statusText}}`);
+                }}
+            }} catch (error) {{
+                console.error('Error posting to Notion:', error);
+                statusEl.textContent = '❌ Error: ' + error.message;
+                statusEl.style.color = '#f44336';
+                notionBtn.disabled = false;
+            }}
         }}
     </script>
 """

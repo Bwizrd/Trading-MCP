@@ -282,3 +282,6 @@ For questions about:
 ## License
 
 This is a demonstration project. Use at your own risk. Not financial advice.
+
+## Config Path
+~/Library/Application Support/Claude/claude_desktop_config.json

@@ -111,14 +111,17 @@ class CrossoverDetector:
             threshold: Threshold level
             
         Returns:
-            True if crossed above (was below, now above)
+            True if crossed above (was below, now at or above)
+            
+        Note: Uses >= for current value to match Rust Signal Monitor logic
         """
         if alias not in self._previous_values:
             # First time seeing this indicator, no crossover possible
             return False
         
         previous = self._previous_values[alias]
-        crossed = previous <= threshold < current
+        # Match Rust logic: previous < threshold && current >= threshold
+        crossed = previous < threshold and current >= threshold
         
         if crossed:
             logger.info(f"Crossover detected: {alias} crossed ABOVE {threshold} ({previous:.2f} -> {current:.2f})")
@@ -135,7 +138,9 @@ class CrossoverDetector:
             threshold: Threshold level
             
         Returns:
-            True if crossed below (was above, now below)
+            True if crossed below (was above, now at or below)
+            
+        Note: Uses <= for current value to match Rust Signal Monitor logic
         """
         diagnostic_logger.debug(f"      detect_cross_below: alias={alias}, current={current:.2f}, threshold={threshold}")
         
@@ -145,10 +150,11 @@ class CrossoverDetector:
             return False
         
         previous = self._previous_values[alias]
-        crossed = previous >= threshold > current
+        # Match Rust logic: previous > threshold && current <= threshold
+        crossed = previous > threshold and current <= threshold
         
         diagnostic_logger.debug(f"      Previous: {previous:.2f}, Current: {current:.2f}")
-        diagnostic_logger.debug(f"      Condition: {previous:.2f} >= {threshold} > {current:.2f} = {crossed}")
+        diagnostic_logger.debug(f"      Condition: {previous:.2f} > {threshold} and {current:.2f} <= {threshold} = {crossed}")
         
         if crossed:
             diagnostic_logger.info(f"      *** CROSSOVER DETECTED: {alias} crossed BELOW {threshold} ({previous:.2f} -> {current:.2f}) ***")

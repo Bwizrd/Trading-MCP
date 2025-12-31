@@ -1,0 +1,32 @@
+{
+  "servers": {
+    "ctraderConnector": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/mcp_servers/data_connectors/ctrader.py"
+      ]
+    },
+    "influxdbConnector": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/mcp_servers/data_connectors/influxdb.py"
+      ]
+    },
+    "universalBacktestEngine": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/mcp_servers/universal_backtest_engine.py"
+      ]
+    },
+    "modularChartEngine": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/mcp_servers/modular_chart_engine.py"
+      ]
+    }
+  }
+}

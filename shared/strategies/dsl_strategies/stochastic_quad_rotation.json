@@ -65,14 +65,14 @@
     }
   },
   "risk_management": {
-    "stop_loss_pips": 15,
-    "take_profit_pips": 25,
+    "stop_loss_pips": 8,
+    "take_profit_pips": 8,
     "max_daily_trades": 200,
     "min_pip_distance": 0.0001,
     "execution_window_minutes": 1440,
-    "trading_hours_start": "14:30",
-    "trading_hours_end": "21:00",
-    "min_trend_range_pips": 10.0,
+    "trading_hours_start": "09:00",
+    "trading_hours_end": "17:30",
+    "min_trend_range_pips": 0.0,
     "trend_lookback_minutes": 10
   }
 }
