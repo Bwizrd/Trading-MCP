@@ -319,6 +319,16 @@ async def create_chart_from_backtest_json(json_filename: str) -> list[TextConten
                 total_candles_processed=backtest_data['execution']['total_candles_processed']
             )
             
+            # Check if diagnostic CSV exists for this backtest
+            # Look for diagnostic CSV file matching this backtest run
+            import glob
+            diagnostic_pattern = f"optimization_results/diagnostics/diagnostic_{symbol}_*.csv"
+            diagnostic_files = sorted(glob.glob(diagnostic_pattern), key=os.path.getmtime, reverse=True)
+            if diagnostic_files:
+                # Use the most recent diagnostic CSV for this symbol
+                results.diagnostic_csv_path = diagnostic_files[0]
+                logger.info(f"Found diagnostic CSV: {results.diagnostic_csv_path}")
+            
             # Use strategy-provided indicators (architecture-compliant)
             indicators = {}
             

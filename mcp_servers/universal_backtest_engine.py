@@ -17,11 +17,15 @@ import json
 from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 import mcp
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))

@@ -455,39 +455,65 @@ class DSLStrategy(TradingStrategy):
         
         return indicator_series
     
-    def _is_within_trading_hours(self, timestamp) -> bool:
+    def _is_within_trading_hours(self, timestamp, symbol=None) -> bool:
         """
         Check if the given timestamp is within configured trading hours.
-        
+        Supports global default and per-symbol overrides via 'trading_hours' block in config.
+        Falls back to risk_management block if not present.
         Args:
             timestamp: Datetime to check
-            
+            symbol: Trading symbol (optional, for per-symbol hours)
         Returns:
             True if within trading hours or no trading hours configured, False otherwise
         """
-        risk_mgmt = self.dsl_config.get('risk_management', {})
-        trading_hours_start = risk_mgmt.get('trading_hours_start')
-        trading_hours_end = risk_mgmt.get('trading_hours_end')
-        
-        # If no trading hours configured, allow all times
-        if not trading_hours_start or not trading_hours_end:
+        # 1. Check for new trading_hours block
+        trading_hours = self.dsl_config.get('trading_hours', {})
+        trading_start = trading_end = trading_tz = None
+        if trading_hours:
+            # Per-symbol override
+            if symbol and 'symbols' in trading_hours and symbol in trading_hours['symbols']:
+                sym_hours = trading_hours['symbols'][symbol]
+                trading_start = sym_hours.get('start')
+                trading_end = sym_hours.get('end')
+                trading_tz = sym_hours.get('timezone')
+            # Global default
+            elif 'default' in trading_hours:
+                def_hours = trading_hours['default']
+                trading_start = def_hours.get('start')
+                trading_end = def_hours.get('end')
+                trading_tz = def_hours.get('timezone')
+        # 2. Fallback to old risk_management block
+        if not trading_start or not trading_end:
+            risk_mgmt = self.dsl_config.get('risk_management', {})
+            trading_start = risk_mgmt.get('trading_hours_start')
+            trading_end = risk_mgmt.get('trading_hours_end')
+            trading_tz = risk_mgmt.get('trading_hours_tz')
+        # If still not set, allow all times
+        if not trading_start or not trading_end:
             return True
-        
+        # Convert timestamp to correct timezone if tz is set
+        if trading_tz:
+            try:
+                import pytz
+                tz = pytz.timezone(trading_tz)
+                if timestamp.tzinfo is None:
+                    timestamp = tz.localize(timestamp)
+                else:
+                    timestamp = timestamp.astimezone(tz)
+            except Exception as e:
+                # If pytz not available or error, fallback to naive
+                pass
         # Parse trading hours
-        start_hour, start_minute = map(int, trading_hours_start.split(':'))
-        end_hour, end_minute = map(int, trading_hours_end.split(':'))
-        
+        start_hour, start_minute = map(int, trading_start.split(':'))
+        end_hour, end_minute = map(int, trading_end.split(':'))
         # Get current time in minutes since midnight
         current_minutes = timestamp.hour * 60 + timestamp.minute
         start_minutes = start_hour * 60 + start_minute
         end_minutes = end_hour * 60 + end_minute
-        
         # Handle cases where trading hours span midnight
         if start_minutes <= end_minutes:
-            # Normal case: e.g., 09:30 to 16:00
             return start_minutes <= current_minutes <= end_minutes
         else:
-            # Spans midnight: e.g., 22:00 to 02:00
             return current_minutes >= start_minutes or current_minutes <= end_minutes
     
     def generate_signal(self, context: StrategyContext) -> Optional[Signal]:
@@ -516,8 +542,9 @@ class DSLStrategy(TradingStrategy):
         if context.current_position is not None:
             return None
         
-        # Check trading hours if configured
-        if not self._is_within_trading_hours(candle.timestamp):
+        # Check trading hours if configured (always pass symbol for per-symbol/default logic)
+        if not self._is_within_trading_hours(candle.timestamp, getattr(context, 'symbol', None)):
+            diagnostic_logger.info(f"Filtered by trading hours: {candle.timestamp} for symbol {getattr(context, 'symbol', None)}")
             return None
         
         if self.is_indicator_based:

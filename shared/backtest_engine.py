@@ -22,6 +22,7 @@ from shared.strategy_interface import (
 )
 from shared.indicators import indicator_registry, IndicatorRegistry
 from shared.data_connector import DataConnector
+from shared.diagnostics import export_diagnostic_csv, is_diagnostics_enabled
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -210,8 +211,67 @@ class UniversalBacktestEngine:
                 data_source=f"{strategy_data.source} ({'cached' if hasattr(strategy_data, 'cached') and strategy_data.cached else 'fresh'})",
                 total_candles_processed=len(strategy_candles),
                 market_data=strategy_candles,  # Include market data for chart generation
-                indicators=indicators_for_chart  # Include indicators for chart generation
+                indicators=indicators_for_chart,  # Include indicators for chart generation
+                diagnostic_csv_path=None  # Will be set if diagnostics enabled
             )
+            
+            # Export diagnostic CSV if enabled
+            if is_diagnostics_enabled():
+                logger.info("Diagnostics enabled - exporting detailed CSV...")
+                try:
+                    # Extract trend filter data if available from DSL strategy
+                    trend_filter_data = None
+                    
+                    # Unwrap DSLStrategyWrapper to get actual DSLStrategy instance
+                    actual_strategy = strategy
+                    if hasattr(strategy, '_dsl_strategy'):
+                        actual_strategy = strategy._dsl_strategy
+                        logger.info("Unwrapped DSLStrategyWrapper to access inner DSLStrategy")
+                    
+                    # Debug: Check strategy attributes
+                    logger.info(f"DEBUG: Strategy type: {type(actual_strategy)}")
+                    logger.info(f"DEBUG: Has candle_history: {hasattr(actual_strategy, 'candle_history')}")
+                    logger.info(f"DEBUG: Has _calculate_trend_strength: {hasattr(actual_strategy, '_calculate_trend_strength')}")
+                    logger.info(f"DEBUG: Has min_trend_range_pips: {hasattr(actual_strategy, 'min_trend_range_pips')}")
+                    if hasattr(actual_strategy, 'min_trend_range_pips'):
+                        logger.info(f"DEBUG: min_trend_range_pips value: {actual_strategy.min_trend_range_pips}")
+                    
+                    if (hasattr(actual_strategy, 'candle_history') and 
+                        hasattr(actual_strategy, '_calculate_trend_strength') and 
+                        hasattr(actual_strategy, 'min_trend_range_pips') and
+                        actual_strategy.min_trend_range_pips > 0):
+                        # Calculate trend filter for each candle point in history
+                        logger.info(f"Calculating trend filter data (min_trend_range_pips={actual_strategy.min_trend_range_pips})...")
+                        logger.info(f"DEBUG: Starting trend filter calculation for {len(strategy_candles)} candles...")
+                        trend_filter_data = {}
+                        # Rebuild candle history progressively to get trend strength at each point
+                        for i, candle in enumerate(strategy_candles):
+                            # Set the strategy's candle history to this point in time
+                            actual_strategy.candle_history = strategy_candles[:i+1]
+                            # Calculate trend strength at this point
+                            trend_strength = actual_strategy._calculate_trend_strength()
+                            if trend_strength:
+                                trend_filter_data[candle.timestamp] = trend_strength['range']
+                        # Restore full candle history
+                        actual_strategy.candle_history = strategy_candles
+                        logger.info(f"Calculated trend filter for {len(trend_filter_data)} candles")
+                        logger.info(f"DEBUG: Trend filter data calculated for {len(trend_filter_data)} candles")
+                    else:
+                        logger.info(f"DEBUG: Trend filter calculation skipped - conditions not met")
+                    
+                    csv_path = export_diagnostic_csv(
+                        candles=strategy_candles,
+                        trades=trades,
+                        indicator_series=indicators_for_chart,
+                        trend_filter_data=trend_filter_data,
+                        strategy_name=strategy.get_name(),
+                        symbol=config.symbol
+                    )
+                    if csv_path:
+                        results.diagnostic_csv_path = csv_path
+                        logger.info(f"📊 Diagnostic CSV: {csv_path}")
+                except Exception as e:
+                    logger.error(f"Failed to export diagnostic CSV: {e}", exc_info=True)
             
             logger.info(f"Backtest completed: {results.total_trades} trades, {results.win_rate:.1%} win rate, {results.total_pips:+.1f} pips")
             return results

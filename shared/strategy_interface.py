@@ -338,6 +338,9 @@ class BacktestResults:
     # Indicators (for chart generation)
     indicators: Optional[Dict[str, List[float]]] = None
     
+    # Diagnostic CSV path (if diagnostics enabled)
+    diagnostic_csv_path: Optional[str] = None
+    
     def to_dict(self, include_market_data: bool = True) -> Dict[str, Any]:
         """Convert results to dictionary for JSON serialization."""
         result = {

@@ -1731,7 +1731,11 @@ class ChartEngine:
         <div style="margin-bottom: 20px;">
             <button class="download-btn" onclick="downloadTradesAsText()">📥 Download Trades as Text File</button>
             <button class="notion-btn" onclick="postToNotion()">📝 Post to Notion</button>
+            <button class="ssh-btn" onclick="sendToSSH()">🚀 Send to SSH</button>
+            {'<button class="diagnostic-btn" onclick="uploadDiagnosticCSV()">📊 Send Diagnostic CSV</button>' if backtest_results.diagnostic_csv_path else ''}
             <span id="notionStatus" style="margin-left: 15px; font-weight: bold;"></span>
+            <span id="sshStatus" style="margin-left: 15px; font-weight: bold;"></span>
+            <span id="diagnosticStatus" style="margin-left: 15px; font-weight: bold;"></span>
         </div>
         {trades_table_html}
     </div>
@@ -1806,6 +1810,58 @@ class ChartEngine:
             transform: translateY(0);
         }}
         .notion-btn:disabled {{
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }}
+        .ssh-btn {{
+            background: linear-gradient(135deg, #FF6B6B 0%, #E74C3C 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }}
+        .ssh-btn:hover {{
+            background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }}
+        .ssh-btn:active {{
+            transform: translateY(0);
+        }}
+        .ssh-btn:disabled {{
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }}
+        .diagnostic-btn {{
+            background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }}
+        .diagnostic-btn:hover {{
+            background: linear-gradient(135deg, #7B1FA2 0%, #6A1B9A 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }}
+        .diagnostic-btn:active {{
+            transform: translateY(0);
+        }}
+        .diagnostic-btn:disabled {{
             background: #ccc;
             cursor: not-allowed;
             transform: none;
@@ -1936,7 +1992,7 @@ class ChartEngine:
                 }};
                 
                 // Post to endpoint
-                const response = await fetch('http://localhost:8000/notion/backtest-result', {{
+                const response = await fetch('http://localhost:8001/notion/backtest-result', {{
                     method: 'POST',
                     headers: {{
                         'Content-Type': 'application/json',
@@ -1960,6 +2016,143 @@ class ChartEngine:
                 statusEl.textContent = '❌ Error: ' + error.message;
                 statusEl.style.color = '#f44336';
                 notionBtn.disabled = false;
+            }}
+        }}
+
+        async function sendToSSH() {{
+            const statusEl = document.getElementById('sshStatus');
+            const sshBtn = document.querySelector('.ssh-btn');
+
+            // Disable button and show loading
+            sshBtn.disabled = true;
+            statusEl.textContent = '⏳ Uploading to SSH...';
+            statusEl.style.color = '#FF9800';
+
+            try {{
+                // Extract trade data from table
+                const table = document.querySelector('.trades-table');
+                const rows = Array.from(table.querySelectorAll('tbody tr'));
+
+                const trades = rows.map(row => {{
+                    const cells = row.querySelectorAll('td');
+                    return {{
+                        run_id: '{run_id}',
+                        number: cells[0].textContent.trim(),
+                        entry_time: cells[1].textContent.trim(),
+                        direction: cells[2].textContent.trim(),
+                        entry_price: cells[3].textContent.trim(),
+                        exit_time: cells[4].textContent.trim(),
+                        exit_price: cells[5].textContent.trim(),
+                        duration: cells[6].textContent.trim(),
+                        pips: cells[7].textContent.trim(),
+                        exit_reason: cells[8].textContent.trim()
+                    }};
+                }});
+
+                // Extract summary data
+                const summaryP = document.querySelector('.trades-table').nextElementSibling;
+                const summaryText = summaryP ? summaryP.textContent : '';
+
+                // Parse summary
+                const totalTrades = trades.length;
+                const winners = trades.filter(t => parseFloat(t.pips) > 0).length;
+                const losers = trades.filter(t => parseFloat(t.pips) < 0).length;
+                const totalPips = trades.reduce((sum, t) => sum + parseFloat(t.pips), 0);
+
+                // Prepare payload
+                const payload = {{
+                    run_id: '{run_id}',
+                    strategy: '{strategy_name}',
+                    symbol: '{symbol}',
+                    timeframe: '{timeframe}',
+                    period: '{start_date} to {end_date}',
+                    start_date: '{start_date}',
+                    end_date: '{end_date}',
+                    generated: '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}',
+                    summary: {{
+                        total_trades: totalTrades,
+                        winners: winners,
+                        losers: losers,
+                        win_rate: ((winners / totalTrades) * 100).toFixed(1) + '%',
+                        total_pips: totalPips.toFixed(1)
+                    }},
+                    trades: trades
+                }};
+
+                // Post to SSH endpoint
+                const response = await fetch('http://localhost:8001/ssh/upload-backtest', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify(payload)
+                }});
+
+                if (response.ok) {{
+                    const result = await response.json();
+                    statusEl.textContent = '✅ Uploaded to win-vps!';
+                    statusEl.style.color = '#4CAF50';
+                    console.log('SSH Upload result:', result);
+                    setTimeout(() => {{
+                        statusEl.textContent = '';
+                        sshBtn.disabled = false;
+                    }}, 3000);
+                }} else {{
+                    const errorData = await response.json().catch(() => ({{detail: response.statusText}}));
+                    throw new Error(errorData.detail || `HTTP ${{response.status}}: ${{response.statusText}}`);
+                }}
+            }} catch (error) {{
+                console.error('Error uploading to SSH:', error);
+                statusEl.textContent = '❌ Error: ' + error.message;
+                statusEl.style.color = '#f44336';
+                sshBtn.disabled = false;
+            }}
+        }}
+
+        async function uploadDiagnosticCSV() {{
+            const statusEl = document.getElementById('diagnosticStatus');
+            const diagnosticBtn = document.querySelector('.diagnostic-btn');
+
+            // Disable button and show loading
+            diagnosticBtn.disabled = true;
+            statusEl.textContent = '⏳ Uploading diagnostic CSV...';
+            statusEl.style.color = '#FF9800';
+
+            try {{
+                const payload = {{
+                    csv_path: '{str(Path(backtest_results.diagnostic_csv_path).absolute()) if hasattr(backtest_results, 'diagnostic_csv_path') and backtest_results.diagnostic_csv_path else ''}',
+                    symbol: '{symbol}',
+                    strategy: '{strategy_name}',
+                    date: '{start_date}'
+                }};
+
+                // Post to diagnostic CSV upload endpoint
+                const response = await fetch('http://localhost:8001/ssh/upload-diagnostic-csv', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify(payload)
+                }});
+
+                if (response.ok) {{
+                    const result = await response.json();
+                    statusEl.textContent = '✅ Diagnostic CSV uploaded!';
+                    statusEl.style.color = '#4CAF50';
+                    console.log('Diagnostic CSV Upload result:', result);
+                    setTimeout(() => {{
+                        statusEl.textContent = '';
+                        diagnosticBtn.disabled = false;
+                    }}, 3000);
+                }} else {{
+                    const errorData = await response.json().catch(() => ({{detail: response.statusText}}));
+                    throw new Error(errorData.detail || `HTTP ${{response.status}}: ${{response.statusText}}`);
+                }}
+            }} catch (error) {{
+                console.error('Error uploading diagnostic CSV:', error);
+                statusEl.textContent = '❌ Error: ' + error.message;
+                statusEl.style.color = '#f44336';
+                diagnosticBtn.disabled = false;
             }}
         }}
     </script>
