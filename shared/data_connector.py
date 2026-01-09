@@ -46,13 +46,14 @@ class DataConnector:
     def __init__(self):
         """Initialize the data connector."""
         pass
-        
+    
     async def get_market_data(
         self,
         symbol: str,
         timeframe: str,
         start_date: datetime,
         end_date: datetime,
+        use_tick_data: bool = False,
         **kwargs
     ) -> MarketDataResponse:
         """
@@ -60,7 +61,10 @@ class DataConnector:
         
         This method provides the interface expected by UniversalBacktestEngine.
         """
-        logger.info(f"Fetching market data for {symbol} {timeframe} from {start_date} to {end_date}")
+        import sys
+        print(f"🔥 DATA CONNECTOR CALLED: use_tick_data={use_tick_data}", file=sys.stderr, flush=True)
+        logger.info(f"📊 get_market_data called: {symbol} {timeframe} from {start_date} to {end_date}")
+        logger.info(f"🎯 TICK DATA MODE: {use_tick_data}")
         
         try:
             # Use the correct API endpoints directly instead of broken _fetch_historical_data
@@ -101,14 +105,65 @@ class DataConnector:
                 bars = min(int(estimated_bars * 1.1), 10000)
                 logger.info(f"Calculated {bars} bars for {days_diff} days of {timeframe} data")
 
-                # For backtest data, ALWAYS use date range API for complete historical data
-                # InfluxDB only has ~10 days of data, which is insufficient for backtesting
+                # Check if tick data is requested
+                if use_tick_data:
+                    logger.info("🎯 TICK DATA MODE: Fetching tick data instead of candles")
+                    # For tick data, use warmup start time to ensure indicators have sufficient data
+                    # This fetches from earlier in the day (e.g., 06:00) instead of market open (08:00)
+                    start_iso = start_date.strftime('%Y-%m-%dT%H:%M:%S.000Z') if isinstance(start_date, datetime) else f"{start_date}T00:00:00.000Z"
+                    end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z') if isinstance(end_date, datetime) else f"{end_date}T23:59:59.000Z"
+                    
+                    tick_url = f"http://localhost:8000/getTickDataFromDB?pair={pair_id}&startDate={start_iso}&endDate={end_iso}&maxTicks=50000"
+                    logger.info(f"Fetching tick data: {tick_url}")
+                    
+                    tick_response = await client.get(tick_url)
+                    if tick_response.status_code == 200:
+                        tick_data = tick_response.json()
+                        if 'data' in tick_data and len(tick_data['data']) > 0:
+                            logger.info(f"✅ Received {len(tick_data['data'])} ticks, converting to candles...")
+                            # Convert ticks to 1-second candles first
+                            second_candles = self._convert_ticks_to_candles(tick_data['data'])
+                            
+                            # For tick data mode with sub-minute timeframes, return 1-second candles directly
+                            # This allows tick-level precision for trade entries
+                            if timeframe.lower() in ['1s', 'tick']:
+                                logger.info(f"✅ Returning {len(second_candles)} 1-second candles for tick-level precision")
+                                # Warmup disabled - return all candles
+                                return MarketDataResponse(
+                                    data=second_candles,
+                                    source="InfluxDB_tick_data",
+                                    symbol=symbol,
+                                    timeframe="1s",
+                                    start_date=start_date,
+                                    end_date=end_date
+                                )
+                            
+                            # For minute+ timeframes, we need both:
+                            # - Resampled candles for strategy signal generation
+                            # - Keep second candles for tick-level execution precision
+                            # Return second candles but with metadata indicating target timeframe
+                            logger.info(f"✅ Converted {len(tick_data['data'])} ticks → {len(second_candles)} 1-second candles (tick precision mode)")
+                            # Warmup disabled - return all candles
+                            return MarketDataResponse(
+                                data=second_candles,
+                                source="InfluxDB_tick_data",
+                                symbol=symbol,
+                                timeframe=timeframe,  # Original timeframe for strategy calculations
+                                start_date=start_date,
+                                end_date=end_date
+                            )
+                        else:
+                            logger.warning("⚠️ Tick data response empty, falling back to standard candles")
+                    else:
+                        logger.warning(f"⚠️ Tick data fetch failed (status {tick_response.status_code}), falling back to standard candles")
+                
+                # Fetch data at requested timeframe
                 timeframe_lower = timeframe.lower()
                 start_iso = start_date.strftime('%Y-%m-%dT00:00:00.000Z') if isinstance(start_date, datetime) else f"{start_date}T00:00:00.000Z"
                 end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z') if isinstance(end_date, datetime) else f"{end_date}T23:59:59.000Z"
 
                 date_url = f"http://localhost:8000/getDataByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
-                logger.info(f"Fetching historical data via date range API: {date_url}")
+                logger.info(f"Fetching {timeframe} data: {date_url}")
 
                 date_response = await client.get(date_url)
                 if date_response.status_code == 200:
@@ -116,7 +171,7 @@ class DataConnector:
                     if 'data' in date_data and len(date_data['data']) > 0:
                         data_frame = date_data['data']
                         data_source = "cTrader API"
-                        logger.info(f"Successfully fetched {len(data_frame)} candles from cTrader API")
+                        logger.info(f"Successfully fetched {len(data_frame)} {timeframe} candles from cTrader API")
                     else:
                         # Fallback to InfluxDB if date range fails
                         logger.warning("No data from date range API, trying InfluxDB fallback")
@@ -155,6 +210,7 @@ class DataConnector:
                     candles.append(candle)
                 
                 logger.info(f"Successfully fetched {len(candles)} candles from {data_source}")
+                # Warmup disabled - return all candles
                 return MarketDataResponse(
                     data=candles,
                     source=data_source,
@@ -363,6 +419,119 @@ class DataConnector:
             start_date=start_date,
             end_date=end_date
         )
+    
+    def _convert_ticks_to_candles(self, ticks: List[Dict]) -> List[Candle]:
+        """
+        Convert tick data (bid/ask) to 1-second OHLCV candles.
+        Groups ticks by second and creates candles from mid prices.
+        
+        Args:
+            ticks: List of tick data dictionaries with timestamp, bid, ask
+            
+        Returns:
+            List of Candle objects aggregated to 1-second intervals
+        """
+        if not ticks:
+            return []
+        
+        import pandas as pd
+        from datetime import datetime as dt
+        
+        try:
+            # Convert to DataFrame for easier grouping
+            df = pd.DataFrame(ticks)
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df['mid'] = (df['bid'] + df['ask']) / 2  # Calculate mid price
+            df['second'] = df['timestamp'].dt.floor('1s')  # Group by second
+            
+            # Aggregate into 1-second candles
+            candles = []
+            for second, group in df.groupby('second'):
+                candle = Candle(
+                    timestamp=second.to_pydatetime(),
+                    open=float(group['mid'].iloc[0]),
+                    high=float(group['mid'].max()),
+                    low=float(group['mid'].min()),
+                    close=float(group['mid'].iloc[-1]),
+                    volume=int(len(group))  # Number of ticks as volume
+                )
+                candles.append(candle)
+            
+            # Sort by timestamp to ensure chronological order
+            candles.sort(key=lambda c: c.timestamp)
+            logger.info(f"Converted {len(ticks)} ticks to {len(candles)} 1-second candles")
+            return candles
+            
+        except Exception as e:
+            logger.error(f"Failed to convert ticks to candles: {e}", exc_info=True)
+            return []
+    
+    def _resample_candles(self, candles: List[Candle], target_timeframe: str) -> List[Candle]:
+        """
+        Resample 1-second candles to a target timeframe (e.g., 1m, 5m, 15m).
+        
+        Args:
+            candles: List of 1-second candle objects
+            target_timeframe: Target timeframe string (e.g., '1m', '5m', '15m', '30m', '1h')
+            
+        Returns:
+            List of resampled Candle objects
+        """
+        if not candles:
+            return []
+        
+        import pandas as pd
+        
+        try:
+            # Parse timeframe to pandas frequency
+            timeframe_map = {
+                '1m': '1T', '5m': '5T', '15m': '15T', '30m': '30T',
+                '1h': '1H', '4h': '4H', '1d': '1D'
+            }
+            
+            freq = timeframe_map.get(target_timeframe.lower(), '1T')
+            
+            # Convert candles to DataFrame
+            df = pd.DataFrame([{
+                'timestamp': c.timestamp,
+                'open': c.open,
+                'high': c.high,
+                'low': c.low,
+                'close': c.close,
+                'volume': c.volume
+            } for c in candles])
+            
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            
+            # Resample to target timeframe
+            resampled = df.resample(freq).agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()
+            
+            # Convert back to Candle objects
+            resampled_candles = []
+            for timestamp, row in resampled.iterrows():
+                candle = Candle(
+                    timestamp=timestamp.to_pydatetime(),
+                    open=float(row['open']),
+                    high=float(row['high']),
+                    low=float(row['low']),
+                    close=float(row['close']),
+                    volume=int(row['volume'])
+                )
+                resampled_candles.append(candle)
+            
+            logger.info(f"Resampled {len(candles)} 1s candles to {len(resampled_candles)} {target_timeframe} candles")
+            return resampled_candles
+            
+        except Exception as e:
+            logger.error(f"Failed to resample candles: {e}", exc_info=True)
+            return candles  # Return original candles if resampling fails
 
     async def get_symbols(self) -> List[str]:
         """Get available symbols."""

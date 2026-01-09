@@ -71,7 +71,8 @@
     "min_pip_distance": 0.0001,
     "execution_window_minutes": 1440,
     "min_trend_range_pips": 10.0,
-    "trend_lookback_minutes": 10
+    "trend_lookback_minutes": 10,
+    "allow_multiple_positions": false
   },
   "trading_hours": {
     "default": {

@@ -356,7 +356,9 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
     
     # Extract parameters with defaults
     symbol = arguments.get("symbol", "EURUSD")
-    timeframe = arguments.get("timeframe", "30m")
+    # Default to 1m when using tick data, 30m otherwise
+    use_tick_data = arguments.get("use_tick_data", False)
+    timeframe = arguments.get("timeframe", "1m" if use_tick_data else "30m")
     initial_balance = arguments.get("initial_balance", 10000)
     risk_per_trade = arguments.get("risk_per_trade", 0.02)
     stop_loss_pips = arguments.get("stop_loss_pips", 15)
@@ -387,7 +389,8 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
             initial_balance=initial_balance,
             risk_per_trade=risk_per_trade,
             stop_loss_pips=stop_loss_pips,
-            take_profit_pips=take_profit_pips
+            take_profit_pips=take_profit_pips,
+            use_tick_data=use_tick_data
         )
         
         # Run backtest

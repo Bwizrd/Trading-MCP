@@ -124,6 +124,9 @@ class DSLStrategy(TradingStrategy):
         self.min_trend_range_pips = risk_mgmt.get("min_trend_range_pips", 0.0)  # 0 = disabled
         self.trend_lookback_minutes = risk_mgmt.get("trend_lookback_minutes", 10)
         
+        # Position management
+        self.allow_multiple_positions = risk_mgmt.get("allow_multiple_positions", False)  # Default: one trade at a time
+        
         # Strategy state
         self.daily_trade_count = 0
         self.last_trade_date = None
@@ -538,8 +541,8 @@ class DSLStrategy(TradingStrategy):
         candle = context.current_candle
         current_date = candle.timestamp.date()
         
-        # ONE TRADE AT A TIME: Don't generate new signals if there's an active trade
-        if context.current_position is not None:
+        # Check if multiple positions are allowed (configurable)
+        if not self.allow_multiple_positions and context.current_position is not None:
             return None
         
         # Check trading hours if configured (always pass symbol for per-symbol/default logic)
@@ -568,8 +571,8 @@ class DSLStrategy(TradingStrategy):
             diagnostic_logger.debug(f"Daily trade limit reached: {self.daily_trade_count}/{self.max_daily_trades}")
             return None
             
-        # Skip if already in position
-        if context.current_position:
+        # Check if multiple positions are allowed (configurable)
+        if not self.allow_multiple_positions and context.current_position:
             diagnostic_logger.debug(f"Already in position, skipping signal generation")
             return None
             
@@ -609,10 +612,11 @@ class DSLStrategy(TradingStrategy):
         if self.min_trend_range_pips > 0:
             trend_strength = self._calculate_trend_strength()
             if trend_strength:
-                diagnostic_logger.debug(f"Trend strength check:")
-                diagnostic_logger.debug(f"  Range: {trend_strength['range']:.2f} pips (min required: {self.min_trend_range_pips})")
-                diagnostic_logger.debug(f"  Change: {trend_strength['change']:.2f} pips")
-                diagnostic_logger.debug(f"  Price: {trend_strength['start_price']:.2f} → {trend_strength['end_price']:.2f}")
+                diagnostic_logger.info(f"Trend strength check:")
+                diagnostic_logger.info(f"  Range: {trend_strength['range']:.2f} pips (min required: {self.min_trend_range_pips})")
+                diagnostic_logger.info(f"  Change: {trend_strength['change']:.2f} pips")
+                diagnostic_logger.info(f"  Price: {trend_strength['start_price']:.2f} → {trend_strength['end_price']:.2f}")
+                diagnostic_logger.info(f"  Candle history length: {len(self.candle_history)}")
                 
                 if trend_strength['range'] < self.min_trend_range_pips:
                     diagnostic_logger.info(f"*** SIGNAL REJECTED: Insufficient trend strength ***")
@@ -623,7 +627,7 @@ class DSLStrategy(TradingStrategy):
                 else:
                     diagnostic_logger.info(f"✓ Trend strength check passed: {trend_strength['range']:.2f} pips >= {self.min_trend_range_pips} pips")
             else:
-                diagnostic_logger.debug(f"Trend strength check skipped: insufficient candle history")
+                diagnostic_logger.info(f"Trend strength check skipped: insufficient candle history (have {len(self.candle_history) if self.candle_history else 0})")
             
         # Calculate signal strength - for indicators, use distance between MAs
         strength = self._calculate_indicator_signal_strength()
@@ -766,11 +770,25 @@ class DSLStrategy(TradingStrategy):
         Returns:
             Dict with 'range' and 'change' in pips, or None if insufficient data
         """
-        if not self.candle_history or len(self.candle_history) < self.trend_lookback_minutes:
+        if not self.candle_history:
+            return None
+        
+        # CRITICAL FIX: Convert lookback minutes to number of candles based on actual data frequency
+        # For 1m candles: 10 minutes = 10 candles
+        # For 1s tick data: 10 minutes = 600 candles
+        # Heuristic: If we have >100 candles in history, assume tick/second data
+        if len(self.candle_history) > 100:
+            # Likely tick/second data - need 60x more candles for same time period
+            lookback_candles = self.trend_lookback_minutes * 60
+        else:
+            # Standard minute candles
+            lookback_candles = self.trend_lookback_minutes
+        
+        if len(self.candle_history) < lookback_candles:
             return None
         
         # Get recent candles for lookback period
-        recent_candles = self.candle_history[-self.trend_lookback_minutes:]
+        recent_candles = self.candle_history[-lookback_candles:]
         
         # Extract prices (handle both Candle objects and dicts)
         prices = []

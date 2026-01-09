@@ -200,6 +200,11 @@ async def list_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "Automatically create chart after backtest (default: true)",
                         "default": True
+                    },
+                    "use_tick_data": {
+                        "type": "boolean",
+                        "description": "Use tick data instead of OHLCV candles (only last 10 days available due to retention policy)",
+                        "default": False
                     }
                 },
                 "required": ["strategy_name"],
@@ -524,6 +529,7 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
     take_profit_pips = arguments.get("take_profit_pips", 25)
     strategy_parameters = arguments.get("strategy_parameters", {})
     auto_chart = arguments.get("auto_chart", True)  # Default to True for automatic chart creation
+    use_tick_data = arguments.get("use_tick_data", False)  # Default to False for backward compatibility
     
     # Handle date range
     if "start_date" in arguments and "end_date" in arguments:
@@ -549,7 +555,8 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
             initial_balance=initial_balance,
             risk_per_trade=risk_per_trade,
             stop_loss_pips=stop_loss_pips,
-            take_profit_pips=take_profit_pips
+            take_profit_pips=take_profit_pips,
+            use_tick_data=use_tick_data
         )
         
         # Run backtest

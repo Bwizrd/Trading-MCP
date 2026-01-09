@@ -113,25 +113,41 @@ class UniversalBacktestEngine:
             if not strategy_data.data or len(strategy_data.data) == 0:
                 raise ValueError(f"No strategy data available for {config.symbol} in specified period")
             
+            # Use the Candle objects directly (no conversion needed)
+            strategy_candles = strategy_data.data
+            strategy_candles.sort(key=lambda c: c.timestamp)  # Ensure chronological order
+            
+            # If using tick data (indicated by having many 1-second candles from InfluxDB_tick_data),
+            # we need to resample for indicator calculation but keep originals for execution precision
+            if strategy_data.source == "InfluxDB_tick_data" and len(strategy_candles) > 1000:
+                logger.info(f"🎯 TICK DATA MODE: Resampling {len(strategy_candles)} 1s candles to {config.timeframe} for indicator calculation...")
+                strategy_candles_for_indicators = self._resample_candles_for_indicators(strategy_candles, config.timeframe)
+                logger.info(f"✅ Resampled to {len(strategy_candles_for_indicators)} {config.timeframe} candles for strategy signals")
+            else:
+                strategy_candles_for_indicators = strategy_candles
+            
             # 4. Skip fetching execution data for signal-driven architecture
             # Signal-driven mode: fetch 1m data on-demand per signal instead of bulk processing
             execution_candles = None
             logger.info(f"Using signal-driven architecture - execution data will be fetched on-demand for each signal")
             
-            # Use the Candle objects directly (no conversion needed)
-            strategy_candles = strategy_data.data
-            strategy_candles.sort(key=lambda c: c.timestamp)  # Ensure chronological order
-            
-            # 5. Calculate required indicators
+            # 5. Calculate required indicators on resampled candles (if tick data)
             required_indicators = strategy.requires_indicators()
             logger.info(f"Calculating indicators: {required_indicators}")
-            indicators_data = self._calculate_indicators(strategy_candles, required_indicators)
+            indicators_data = self._calculate_indicators(strategy_candles_for_indicators, required_indicators)
             logger.info(f"Calculated {len(indicators_data)} indicators: {list(indicators_data.keys())}")
+            
+            # If using tick data, we need to map the minute-level indicators to all 1-second candles
+            is_tick_data_mode = strategy_data.source == "InfluxDB_tick_data" and len(strategy_candles) > 1000
+            if is_tick_data_mode:
+                logger.info(f"🎯 Mapping {config.timeframe} indicators to {len(strategy_candles)} 1-second candles...")
+                indicators_data = self._map_indicators_to_tick_candles(indicators_data, strategy_candles, config.timeframe)
+                logger.info(f"✅ Mapped indicators to all tick-level timestamps")
             
             # 6. Run simulation with dual timeframes
             logger.info("Running dual-timeframe trading simulation...")
             trades = await self._run_dual_timeframe_simulation(
-                strategy, strategy_candles, execution_candles, indicators_data, config
+                strategy, strategy_candles, execution_candles, indicators_data, config, is_tick_data_mode
             )
             
             # 6. Calculate performance statistics
@@ -313,7 +329,8 @@ class UniversalBacktestEngine:
                 symbol=config.symbol,
                 timeframe=config.timeframe,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                use_tick_data=getattr(config, 'use_tick_data', False)
             )
             
             logger.info(f"Fetched {len(response.data)} candles from {response.source}")
@@ -335,6 +352,103 @@ class UniversalBacktestEngine:
         except Exception as e:
             logger.error(f"Failed to calculate indicators: {e}")
             raise
+    
+    def _resample_candles_for_indicators(self, candles: List[Candle], target_timeframe: str) -> List[Candle]:
+        """
+        Resample 1-second candles to target timeframe for indicator calculation.
+        This preserves tick-level data for execution while aggregating for proper indicator calculation.
+        """
+        import pandas as pd
+        
+        try:
+            # Parse timeframe to pandas frequency
+            timeframe_map = {
+                '1m': '1T', '5m': '5T', '15m': '15T', '30m': '30T',
+                '1h': '1H', '4h': '4H', '1d': '1D'
+            }
+            
+            freq = timeframe_map.get(target_timeframe.lower(), '1T')
+            
+            # Convert candles to DataFrame
+            df = pd.DataFrame([{
+                'timestamp': c.timestamp,
+                'open': c.open,
+                'high': c.high,
+                'low': c.low,
+                'close': c.close,
+                'volume': c.volume
+            } for c in candles])
+            
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            
+            # Resample to target timeframe
+            resampled = df.resample(freq).agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()
+            
+            # Convert back to Candle objects
+            resampled_candles = []
+            for timestamp, row in resampled.iterrows():
+                candle = Candle(
+                    timestamp=timestamp.to_pydatetime(),
+                    open=float(row['open']),
+                    high=float(row['high']),
+                    low=float(row['low']),
+                    close=float(row['close']),
+                    volume=int(row['volume'])
+                )
+                resampled_candles.append(candle)
+            
+            return resampled_candles
+            
+        except Exception as e:
+            logger.error(f"Failed to resample candles: {e}", exc_info=True)
+            return candles  # Return original candles if resampling fails
+    
+    def _map_indicators_to_tick_candles(self, indicators_data: Dict[str, Dict[datetime, float]], 
+                                       tick_candles: List[Candle], timeframe: str) -> Dict[str, Dict[datetime, float]]:
+        """
+        Map minute-level indicator values to all 1-second candles within each minute.
+        Each 1-second candle gets the indicator value from its parent minute candle.
+        """
+        import pandas as pd
+        
+        try:
+            # Parse timeframe to determine grouping period
+            timeframe_map = {
+                '1m': '1T', '5m': '5T', '15m': '15T', '30m': '30T',
+                '1h': '1H', '4h': '4H', '1d': '1D'
+            }
+            
+            freq = timeframe_map.get(timeframe.lower(), '1T')
+            
+            mapped_indicators = {}
+            
+            for indicator_name, indicator_values in indicators_data.items():
+                mapped_values = {}
+                
+                # For each 1-second candle, find its parent minute candle's indicator value
+                for candle in tick_candles:
+                    # Floor the timestamp to the minute boundary
+                    minute_timestamp = pd.Timestamp(candle.timestamp).floor(freq).to_pydatetime()
+                    
+                    # Get the indicator value from the minute candle
+                    if minute_timestamp in indicator_values:
+                        mapped_values[candle.timestamp] = indicator_values[minute_timestamp]
+                
+                mapped_indicators[indicator_name] = mapped_values
+            
+            logger.info(f"Mapped {len(mapped_indicators)} indicators to {len(tick_candles)} tick candles")
+            return mapped_indicators
+            
+        except Exception as e:
+            logger.error(f"Failed to map indicators to tick candles: {e}", exc_info=True)
+            return indicators_data  # Return original indicators if mapping fails
     
     def _convert_dataframe_to_candles(self, df) -> List[Candle]:
         """Convert pandas DataFrame to list of Candle objects."""
@@ -460,7 +574,8 @@ class UniversalBacktestEngine:
         strategy_candles: List[Candle],
         execution_candles: Optional[List[Candle]],
         indicators_data: Dict[str, Dict[datetime, float]],
-        config: BacktestConfiguration
+        config: BacktestConfiguration,
+        is_tick_data: bool = False
     ) -> List[Trade]:
         """
         Run dual-timeframe simulation with signal-driven execution data fetching:
@@ -473,11 +588,11 @@ class UniversalBacktestEngine:
         if execution_candles is not None:
             # Legacy mode: use pre-fetched execution data
             return await self._run_legacy_dual_timeframe_simulation(
-                strategy, strategy_candles, execution_candles, indicators_data, config
+                strategy, strategy_candles, execution_candles, indicators_data, config, is_tick_data
             )
         
         # New optimized mode: signal-driven execution data fetching
-        return await self._run_signal_driven_simulation(strategy, strategy_candles, indicators_data, config)
+        return await self._run_signal_driven_simulation(strategy, strategy_candles, indicators_data, config, is_tick_data)
     
     async def _run_legacy_dual_timeframe_simulation(
         self,
@@ -485,14 +600,15 @@ class UniversalBacktestEngine:
         strategy_candles: List[Candle],
         execution_candles: List[Candle],
         indicators_data: Dict[str, Dict[datetime, float]],
-        config: BacktestConfiguration
+        config: BacktestConfiguration,
+        is_tick_data: bool = False
     ) -> List[Trade]:
         """Legacy dual-timeframe simulation using pre-fetched execution data."""
         trades = []
         open_trade = None
         pending_signals = []  # Signals waiting for execution
         
-        logger.info(f"Running legacy dual-timeframe simulation: {len(strategy_candles)} strategy candles, {len(execution_candles)} execution candles")
+        logger.info(f"Running legacy dual-timeframe simulation: {len(strategy_candles)} strategy candles, {len(execution_candles)} execution candles (tick_data={is_tick_data})")
         
         # Process strategy candles to generate signals
         historical_candles = []
@@ -520,8 +636,18 @@ class UniversalBacktestEngine:
             # Let strategy process the candle
             strategy.on_candle_processed(context)
             
+            # CRITICAL: When using tick data, only evaluate signals at minute boundaries
+            # This is because indicators are calculated on minute data and forward-filled to seconds
+            # Crossover detection requires value changes, which only happen at minute boundaries
+            should_evaluate_signal = True
+            if is_tick_data:
+                # Only evaluate at minute boundaries (seconds == 0)
+                should_evaluate_signal = candle.timestamp.second == 0
+                if should_evaluate_signal and i % 100 == 0:  # Log every 100th evaluation
+                    logger.debug(f"Evaluating signal at minute boundary: {candle.timestamp}")
+            
             # Generate signal if no open position
-            if not open_trade:
+            if not open_trade and should_evaluate_signal:
                 signal = strategy.generate_signal(context)
                 if signal:
                     strategy_signals.append({
@@ -608,7 +734,8 @@ class UniversalBacktestEngine:
         strategy: TradingStrategy,
         strategy_candles: List[Candle],
         indicators_data: Dict[str, Dict[datetime, float]],
-        config: BacktestConfiguration
+        config: BacktestConfiguration,
+        is_tick_data: bool = False
     ) -> List[Trade]:
         """
         Signal-driven simulation that fetches minimal 1m data on-demand.
@@ -627,7 +754,7 @@ class UniversalBacktestEngine:
         active_trades = []  # Track all trades that haven't closed yet
         historical_candles = []
         
-        logger.info(f"Running signal-driven simulation: {len(strategy_candles)} strategy candles")
+        logger.info(f"Running signal-driven simulation: {len(strategy_candles)} strategy candles (tick_data={is_tick_data})")
         
         # Process strategy candles to generate signals
         for i, candle in enumerate(strategy_candles):
@@ -667,8 +794,18 @@ class UniversalBacktestEngine:
             # Let strategy process the candle
             strategy.on_candle_processed(context)
             
-            # Generate signal only if no active position
-            if not current_position:
+            # CRITICAL: When using tick data, only evaluate signals at minute boundaries
+            # This is because indicators are calculated on minute data and forward-filled to seconds
+            # Crossover detection requires value changes, which only happen at minute boundaries
+            should_evaluate_signal = True
+            if is_tick_data:
+                # Only evaluate at minute boundaries (seconds == 0)
+                should_evaluate_signal = candle.timestamp.second == 0
+                if should_evaluate_signal and i % 100 == 0:  # Log every 100th evaluation
+                    logger.debug(f"Evaluating signal at minute boundary: {candle.timestamp}")
+            
+            # Generate signal only if no active position and at minute boundary (for tick data)
+            if not current_position and should_evaluate_signal:
                 signal = strategy.generate_signal(context)
                 if signal:
                     logger.info(f"Signal generated: {signal.direction.name} @ {candle.timestamp}")
