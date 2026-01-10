@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1m Bar Comparison - Tick Aggregated vs Database</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #4fc3f7;
+        }
+
+        .controls {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            color: #aaa;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        select {
+            padding: 10px 15px;
+            background: #3a3a3a;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        select:hover {
+            border-color: #4fc3f7;
+        }
+
+        .info-panel {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .info-label {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .info-value {
+            color: #4fc3f7;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .comparison-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .data-panel {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .data-panel h2 {
+            margin-bottom: 15px;
+            color: #4fc3f7;
+            font-size: 18px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            background: #3a3a3a;
+            padding: 12px 8px;
+            text-align: left;
+            color: #4fc3f7;
+            font-weight: 600;
+            border-bottom: 2px solid #555;
+        }
+
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        tr:hover {
+            background: #333;
+        }
+
+        .match {
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .mismatch {
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        .diff-panel {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .diff-panel h2 {
+            margin-bottom: 15px;
+            color: #ff9800;
+            font-size: 18px;
+        }
+
+        .diff-table {
+            width: 100%;
+        }
+
+        .diff-row {
+            display: grid;
+            grid-template-columns: 120px repeat(4, 1fr) 80px;
+            gap: 10px;
+            padding: 10px;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        .diff-row.header {
+            background: #3a3a3a;
+            font-weight: 600;
+            color: #4fc3f7;
+        }
+
+        .diff-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .cell-label {
+            font-size: 10px;
+            color: #888;
+        }
+
+        .cell-value {
+            font-size: 13px;
+        }
+
+        .cell-diff {
+            font-size: 11px;
+            color: #ff9800;
+        }
+
+        .match-badge {
+            background: #4caf50;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        .mismatch-badge {
+            background: #f44336;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: #3a3a3a;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: #4fc3f7;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .view-btn {
+            padding: 10px 20px;
+            background: #3a3a3a;
+            color: #e0e0e0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .view-btn.active {
+            background: #4fc3f7;
+            color: #1e1e1e;
+        }
+
+        .view-btn:hover {
+            background: #5a5a5a;
+        }
+
+        .view-btn.active:hover {
+            background: #3fb3e7;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .copy-btn {
+            padding: 10px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: #45a049;
+        }
+
+        .copy-btn.copied {
+            background: #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 1m Bar Comparison: Tick Aggregated vs Database</h1>
+
+        <div class="info-panel">
+            <div class="info-item">
+                <div class="info-label">Symbol</div>
+                <div class="info-value" id="symbol">US500_SB</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Date</div>
+                <div class="info-value" id="date">2026-01-09</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Time Range</div>
+                <div class="info-value" id="timeRange">15:00 - 15:10</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Tick Count</div>
+                <div class="info-value" id="tickCount">5,238</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Bars Compared</div>
+                <div class="info-value" id="barsCompared">10</div>
+            </div>
+        </div>
+
+        <div class="view-toggle">
+            <button class="view-btn active" onclick="switchView('side-by-side')">Side by Side</button>
+            <button class="view-btn" onclick="switchView('difference')">Difference View</button>
+            <button class="view-btn" onclick="switchView('overlay')">Overlay View</button>
+        </div>
+
+        <div id="sideBySideView" class="comparison-container">
+            <div class="data-panel">
+                <h2>📈 Tick Aggregated (from raw ticks)</h2>
+                <table id="tickAggregatedTable">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Open</th>
+                            <th>High</th>
+                            <th>Low</th>
+                            <th>Close</th>
+                            <th>Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tickAggregatedBody"></tbody>
+                </table>
+            </div>
+
+            <div class="data-panel">
+                <h2>💾 Database (from stored bars)</h2>
+                <table id="databaseTable">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Open</th>
+                            <th>High</th>
+                            <th>Low</th>
+                            <th>Close</th>
+                            <th>Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody id="databaseBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="differenceView" class="hidden">
+            <div class="diff-panel">
+                <h2>🔍 Detailed Difference Analysis</h2>
+                <div class="diff-table">
+                    <div class="diff-row header">
+                        <div>Time</div>
+                        <div>Open (Δ)</div>
+                        <div>High (Δ)</div>
+                        <div>Low (Δ)</div>
+                        <div>Close (Δ)</div>
+                        <div>Match</div>
+                    </div>
+                    <div id="diffTableBody"></div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Perfect Matches</div>
+                    <div class="stat-value" id="perfectMatches">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">With Differences</div>
+                    <div class="stat-value" id="withDifferences">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Diff (pips)</div>
+                    <div class="stat-value" id="avgDiff">0.0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Diff (pips)</div>
+                    <div class="stat-value" id="maxDiff">0.0</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="overlayView" class="hidden">
+            <button class="copy-btn" onclick="copyOverlayToClipboard()">
+                📋 Copy Overlay Data to Clipboard
+            </button>
+            <div class="data-panel">
+                <h2>📊 Overlay Comparison</h2>
+                <table id="overlayTable">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Source</th>
+                            <th>Open</th>
+                            <th>High</th>
+                            <th>Low</th>
+                            <th>Close</th>
+                            <th>Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody id="overlayBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tickData = null;
+        let dbData = null;
+        let currentView = 'side-by-side';
+
+        // Load data
+        async function loadData() {
+            try {
+                const [tickResponse, dbResponse] = await Promise.all([
+                    fetch('us500_1m_bars_20260109_1500-1510.json'),
+                    fetch('us500_1m_bars_DB_20260109_1500-1510.json')
+                ]);
+
+                tickData = await tickResponse.json();
+                dbData = await dbResponse.json();
+
+                updateInfo();
+                renderSideBySide();
+                renderDifference();
+                renderOverlay();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Error loading data files. Make sure JSON files are in the same directory.');
+            }
+        }
+
+        function updateInfo() {
+            if (tickData) {
+                document.getElementById('symbol').textContent = tickData.symbol;
+                document.getElementById('date').textContent = tickData.date;
+                document.getElementById('timeRange').textContent = tickData.time_range;
+                document.getElementById('tickCount').textContent = tickData.tick_count.toLocaleString();
+                document.getElementById('barsCompared').textContent = Math.min(tickData.bars.length, dbData.bars.length);
+            }
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function formatPrice(price) {
+            return typeof price === 'number' ? price.toFixed(2) : price;
+        }
+
+        function renderSideBySide() {
+            const tickBody = document.getElementById('tickAggregatedBody');
+            const dbBody = document.getElementById('databaseBody');
+
+            tickBody.innerHTML = '';
+            dbBody.innerHTML = '';
+
+            // Render tick aggregated data
+            tickData.bars.forEach(bar => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${formatTime(bar.timestamp)}</td>
+                    <td>${formatPrice(bar.open)}</td>
+                    <td>${formatPrice(bar.high)}</td>
+                    <td>${formatPrice(bar.low)}</td>
+                    <td>${formatPrice(bar.close)}</td>
+                    <td>${bar.volume}</td>
+                `;
+                tickBody.appendChild(row);
+            });
+
+            // Render database data
+            dbData.bars.forEach(bar => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${formatTime(bar.timestamp)}</td>
+                    <td>${formatPrice(bar.open)}</td>
+                    <td>${formatPrice(bar.high)}</td>
+                    <td>${formatPrice(bar.low)}</td>
+                    <td>${formatPrice(bar.close)}</td>
+                    <td>${bar.volume}</td>
+                `;
+                dbBody.appendChild(row);
+            });
+        }
+
+        function renderDifference() {
+            const diffBody = document.getElementById('diffTableBody');
+            diffBody.innerHTML = '';
+
+            let perfectMatches = 0;
+            let withDifferences = 0;
+            let totalDiff = 0;
+            let maxDiff = 0;
+            let diffCount = 0;
+
+            // Create time-indexed maps
+            const tickMap = new Map();
+            tickData.bars.forEach(bar => {
+                const time = formatTime(bar.timestamp);
+                tickMap.set(time, bar);
+            });
+
+            const dbMap = new Map();
+            dbData.bars.forEach(bar => {
+                const time = formatTime(bar.timestamp);
+                dbMap.set(time, bar);
+            });
+
+            // Compare bars
+            tickData.bars.forEach(tickBar => {
+                const time = formatTime(tickBar.timestamp);
+                const dbBar = dbMap.get(time);
+
+                if (!dbBar) return;
+
+                const openDiff = Math.abs(tickBar.open - dbBar.open);
+                const highDiff = Math.abs(tickBar.high - dbBar.high);
+                const lowDiff = Math.abs(tickBar.low - dbBar.low);
+                const closeDiff = Math.abs(tickBar.close - dbBar.close);
+
+                const maxBarDiff = Math.max(openDiff, highDiff, lowDiff, closeDiff);
+                const isPerfectMatch = maxBarDiff < 0.01;
+
+                if (isPerfectMatch) {
+                    perfectMatches++;
+                } else {
+                    withDifferences++;
+                    totalDiff += maxBarDiff;
+                    diffCount++;
+                    maxDiff = Math.max(maxDiff, maxBarDiff);
+                }
+
+                const row = document.createElement('div');
+                row.className = 'diff-row';
+                row.innerHTML = `
+                    <div>${time}</div>
+                    <div class="diff-cell">
+                        <div class="cell-value">Tick: ${formatPrice(tickBar.open)}</div>
+                        <div class="cell-value">DB: ${formatPrice(dbBar.open)}</div>
+                        <div class="cell-diff">Δ ${openDiff.toFixed(2)}</div>
+                    </div>
+                    <div class="diff-cell">
+                        <div class="cell-value">Tick: ${formatPrice(tickBar.high)}</div>
+                        <div class="cell-value">DB: ${formatPrice(dbBar.high)}</div>
+                        <div class="cell-diff">Δ ${highDiff.toFixed(2)}</div>
+                    </div>
+                    <div class="diff-cell">
+                        <div class="cell-value">Tick: ${formatPrice(tickBar.low)}</div>
+                        <div class="cell-value">DB: ${formatPrice(dbBar.low)}</div>
+                        <div class="cell-diff">Δ ${lowDiff.toFixed(2)}</div>
+                    </div>
+                    <div class="diff-cell">
+                        <div class="cell-value">Tick: ${formatPrice(tickBar.close)}</div>
+                        <div class="cell-value">DB: ${formatPrice(dbBar.close)}</div>
+                        <div class="cell-diff">Δ ${closeDiff.toFixed(2)}</div>
+                    </div>
+                    <div>
+                        ${isPerfectMatch ? 
+                            '<span class="match-badge">✓ Match</span>' : 
+                            '<span class="mismatch-badge">✗ Diff</span>'}
+                    </div>
+                `;
+                diffBody.appendChild(row);
+            });
+
+            // Update stats
+            document.getElementById('perfectMatches').textContent = perfectMatches;
+            document.getElementById('withDifferences').textContent = withDifferences;
+            document.getElementById('avgDiff').textContent = diffCount > 0 ? (totalDiff / diffCount).toFixed(2) : '0.0';
+            document.getElementById('maxDiff').textContent = maxDiff.toFixed(2);
+        }
+
+        function renderOverlay() {
+            const overlayBody = document.getElementById('overlayBody');
+            overlayBody.innerHTML = '';
+
+            // Create time-indexed maps
+            const timeMap = new Map();
+            
+            tickData.bars.forEach(bar => {
+                const time = formatTime(bar.timestamp);
+                if (!timeMap.has(time)) {
+                    timeMap.set(time, { tick: null, db: null });
+                }
+                timeMap.get(time).tick = bar;
+            });
+
+            dbData.bars.forEach(bar => {
+                const time = formatTime(bar.timestamp);
+                if (!timeMap.has(time)) {
+                    timeMap.set(time, { tick: null, db: null });
+                }
+                timeMap.get(time).db = bar;
+            });
+
+            // Render in time order
+            Array.from(timeMap.entries()).sort().forEach(([time, data]) => {
+                if (data.tick) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${time}</td>
+                        <td style="color: #4fc3f7;">Tick Agg</td>
+                        <td>${formatPrice(data.tick.open)}</td>
+                        <td>${formatPrice(data.tick.high)}</td>
+                        <td>${formatPrice(data.tick.low)}</td>
+                        <td>${formatPrice(data.tick.close)}</td>
+                        <td>${data.tick.volume}</td>
+                    `;
+                    overlayBody.appendChild(row);
+                }
+
+                if (data.db) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${time}</td>
+                        <td style="color: #ff9800;">Database</td>
+                        <td>${formatPrice(data.db.open)}</td>
+                        <td>${formatPrice(data.db.high)}</td>
+                        <td>${formatPrice(data.db.low)}</td>
+                        <td>${formatPrice(data.db.close)}</td>
+                        <td>${data.db.volume}</td>
+                    `;
+                    overlayBody.appendChild(row);
+                }
+            });
+        }
+
+        function switchView(view) {
+            currentView = view;
+
+            // Update button states
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Show/hide views
+            document.getElementById('sideBySideView').classList.toggle('hidden', view !== 'side-by-side');
+            document.getElementById('differenceView').classList.toggle('hidden', view !== 'difference');
+            document.getElementById('overlayView').classList.toggle('hidden', view !== 'overlay');
+        }
+
+        function copyOverlayToClipboard() {
+            const btn = event.target;
+            
+            // Build formatted text
+            let text = `US500_SB 1-Minute Bar Comparison - ${tickData.date}\n`;
+            text += `Time Range: ${tickData.time_range}\n`;
+            text += `Tick Count: ${tickData.tick_count.toLocaleString()}\n`;
+            text += `\n${'='.repeat(100)}\n\n`;
+            text += `Time         | Source      | Open     | High     | Low      | Close    | Volume\n`;
+            text += `${'-'.repeat(100)}\n`;
+
+            // Create time-indexed maps
+            const timeMap = new Map();
+            
+            tickData.bars.forEach(bar => {
+                const time = formatTime(bar.timestamp);
+                if (!timeMap.has(time)) {
+                    timeMap.set(time, { tick: null, db: null });
+                }
+                timeMap.get(time).tick = bar;
+            });
+
+            dbData.bars.forEach(bar => {
+                const time = formatTime(bar.timestamp);
+                if (!timeMap.has(time)) {
+                    timeMap.set(time, { tick: null, db: null });
+                }
+                timeMap.get(time).db = bar;
+            });
+
+            // Format data
+            Array.from(timeMap.entries()).sort().forEach(([time, data]) => {
+                if (data.tick) {
+                    text += `${time.padEnd(13)}| Tick Agg    | ${formatPrice(data.tick.open).padEnd(8)} | ${formatPrice(data.tick.high).padEnd(8)} | ${formatPrice(data.tick.low).padEnd(8)} | ${formatPrice(data.tick.close).padEnd(8)} | ${data.tick.volume}\n`;
+                }
+                if (data.db) {
+                    text += `${time.padEnd(13)}| Database    | ${formatPrice(data.db.open).padEnd(8)} | ${formatPrice(data.db.high).padEnd(8)} | ${formatPrice(data.db.low).padEnd(8)} | ${formatPrice(data.db.close).padEnd(8)} | ${data.db.volume}\n`;
+                }
+                if (data.tick && data.db) {
+                    // Add difference line
+                    const openDiff = Math.abs(data.tick.open - data.db.open);
+                    const highDiff = Math.abs(data.tick.high - data.db.high);
+                    const lowDiff = Math.abs(data.tick.low - data.db.low);
+                    const closeDiff = Math.abs(data.tick.close - data.db.close);
+                    text += `${''.padEnd(13)}| Difference  | Δ${openDiff.toFixed(2).padEnd(6)} | Δ${highDiff.toFixed(2).padEnd(6)} | Δ${lowDiff.toFixed(2).padEnd(6)} | Δ${closeDiff.toFixed(2).padEnd(6)} |\n`;
+                    text += `${'-'.repeat(100)}\n`;
+                }
+            });
+
+            // Copy to clipboard
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = '✅ Copied to Clipboard!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy Overlay Data to Clipboard';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy to clipboard. Please try again.');
+            });
+        }
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>

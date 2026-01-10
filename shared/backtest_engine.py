@@ -117,37 +117,35 @@ class UniversalBacktestEngine:
             strategy_candles = strategy_data.data
             strategy_candles.sort(key=lambda c: c.timestamp)  # Ensure chronological order
             
-            # If using tick data (indicated by having many 1-second candles from InfluxDB_tick_data),
-            # we need to resample for indicator calculation but keep originals for execution precision
-            if strategy_data.source == "InfluxDB_tick_data" and len(strategy_candles) > 1000:
-                logger.info(f"🎯 TICK DATA MODE: Resampling {len(strategy_candles)} 1s candles to {config.timeframe} for indicator calculation...")
-                strategy_candles_for_indicators = self._resample_candles_for_indicators(strategy_candles, config.timeframe)
-                logger.info(f"✅ Resampled to {len(strategy_candles_for_indicators)} {config.timeframe} candles for strategy signals")
-            else:
-                strategy_candles_for_indicators = strategy_candles
-            
-            # 4. Skip fetching execution data for signal-driven architecture
-            # Signal-driven mode: fetch 1m data on-demand per signal instead of bulk processing
+            # If using tick data (indicated by having many 1-second candles from VPS or InfluxDB),
+            # use dual-timeframe approach:
+            # - Strategy candles (1m): For indicator calculation and signal generation
+            # - Execution candles (ticks): For precise trade execution and SL/TP tracking
+            is_tick_data_mode = ("tick" in strategy_data.source.lower()) and len(strategy_candles) > 1000
             execution_candles = None
-            logger.info(f"Using signal-driven architecture - execution data will be fetched on-demand for each signal")
             
-            # 5. Calculate required indicators on resampled candles (if tick data)
+            if is_tick_data_mode:
+                logger.info(f"🎯 TICK DATA MODE: Dual-timeframe execution")
+                logger.info(f"   - Strategy: {len(strategy_candles)} 1s tick candles → resampling to {config.timeframe}")
+                execution_candles = strategy_candles  # Keep ticks for precise execution
+                strategy_candles = self._resample_candles_for_indicators(strategy_candles, config.timeframe)
+                logger.info(f"   - Signals: {len(strategy_candles)} {config.timeframe} candles (tick-accurate OHLC)")
+                logger.info(f"   - Execution: {len(execution_candles)} 1-second tick candles (precise SL/TP)")
+            else:
+                logger.info(f"Using signal-driven architecture - execution data will be fetched on-demand for each signal")
+            
+            # 5. Calculate required indicators on strategy candles (1m if tick mode)
             required_indicators = strategy.requires_indicators()
             logger.info(f"Calculating indicators: {required_indicators}")
-            indicators_data = self._calculate_indicators(strategy_candles_for_indicators, required_indicators)
+            indicators_data = self._calculate_indicators(strategy_candles, required_indicators)
             logger.info(f"Calculated {len(indicators_data)} indicators: {list(indicators_data.keys())}")
             
-            # If using tick data, we need to map the minute-level indicators to all 1-second candles
-            is_tick_data_mode = strategy_data.source == "InfluxDB_tick_data" and len(strategy_candles) > 1000
-            if is_tick_data_mode:
-                logger.info(f"🎯 Mapping {config.timeframe} indicators to {len(strategy_candles)} 1-second candles...")
-                indicators_data = self._map_indicators_to_tick_candles(indicators_data, strategy_candles, config.timeframe)
-                logger.info(f"✅ Mapped indicators to all tick-level timestamps")
-            
-            # 6. Run simulation with dual timeframes
-            logger.info("Running dual-timeframe trading simulation...")
+            # 6. Run simulation (dual-timeframe if using ticks)
+            # Note: is_tick_data=False because strategy_candles are already resampled to timeframe
+            # execution_candles contain ticks for precise SL/TP when is_tick_data_mode=True
+            logger.info("Running trading simulation...")
             trades = await self._run_dual_timeframe_simulation(
-                strategy, strategy_candles, execution_candles, indicators_data, config, is_tick_data_mode
+                strategy, strategy_candles, execution_candles, indicators_data, config, is_tick_data=False
             )
             
             # 6. Calculate performance statistics
@@ -293,7 +291,7 @@ class UniversalBacktestEngine:
             return results
             
         except Exception as e:
-            logger.error(f"Backtest failed: {e}")
+            logger.error(f"Backtest failed: {e}", exc_info=True)
             raise
     
     def _validate_inputs(self, strategy: TradingStrategy, config: BacktestConfiguration):
@@ -842,7 +840,7 @@ class UniversalBacktestEngine:
                             logger.info(f"Trade completed: {trade_result.direction.name} @ {trade_result.entry_price:.5f} -> {trade_result.exit_price:.5f} = {trade_result.pips:+.1f} pips (entry: {trade_result.entry_time}, exit: {trade_result.exit_time})")
                     else:
                         logger.warning(f"No execution data available for signal @ {candle.timestamp}")
-            else:
+            elif current_position:
                 logger.debug(f"Skipping signal generation @ {candle.timestamp} - active position exists (entry: {current_position.entry_time}, direction: {current_position.direction.name})")
         
         # Close any remaining active trades at end of period

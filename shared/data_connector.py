@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import asyncio
 import logging
 import sys
+import os
 from pathlib import Path
 from dataclasses import dataclass
 from .models import Candle
@@ -22,6 +23,10 @@ import importlib.util
 spec = importlib.util.spec_from_file_location("influxdb", Path(__file__).parent.parent / "mcp_servers" / "data_connectors" / "influxdb.py")
 influxdb_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(influxdb_module)
+
+# VPS Tick Data Configuration
+VPS_TICK_ENABLED = os.environ.get("VPS_TICK_ENABLED", "true").lower() == "true"
+VPS_TICK_URL = os.environ.get("VPS_TICK_URL", "http://localhost:8020")
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +113,22 @@ class DataConnector:
                 # Check if tick data is requested
                 if use_tick_data:
                     logger.info("🎯 TICK DATA MODE: Fetching tick data instead of candles")
+                    
+                    # Use VPS endpoint if enabled, otherwise use localhost
+                    base_url = VPS_TICK_URL if VPS_TICK_ENABLED else "http://localhost:8000"
+                    data_source = "VPS_TickData" if VPS_TICK_ENABLED else "InfluxDB_tick_data"
+                    
+                    logger.info(f"📡 Using tick data endpoint: {base_url}")
+                    
                     # For tick data, use warmup start time to ensure indicators have sufficient data
                     # This fetches from earlier in the day (e.g., 06:00) instead of market open (08:00)
                     start_iso = start_date.strftime('%Y-%m-%dT%H:%M:%S.000Z') if isinstance(start_date, datetime) else f"{start_date}T00:00:00.000Z"
                     end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z') if isinstance(end_date, datetime) else f"{end_date}T23:59:59.000Z"
                     
-                    tick_url = f"http://localhost:8000/getTickDataFromDB?pair={pair_id}&startDate={start_iso}&endDate={end_iso}&maxTicks=50000"
+                    # CRITICAL: Use 300,000 maxTicks to cover full trading day
+                    # US500 averages ~110 ticks/minute = ~158,400 ticks/day
+                    # 300,000 provides safety margin for high-volatility periods
+                    tick_url = f"{base_url}/getTickDataFromDB?pair={pair_id}&startDate={start_iso}&endDate={end_iso}&maxTicks=300000"
                     logger.info(f"Fetching tick data: {tick_url}")
                     
                     tick_response = await client.get(tick_url)
@@ -146,7 +161,7 @@ class DataConnector:
                             # Warmup disabled - return all candles
                             return MarketDataResponse(
                                 data=second_candles,
-                                source="InfluxDB_tick_data",
+                                source=data_source,
                                 symbol=symbol,
                                 timeframe=timeframe,  # Original timeframe for strategy calculations
                                 start_date=start_date,

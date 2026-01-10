@@ -20,6 +20,12 @@ CTRADER_API_CONFIG = {
     "password": os.environ.get("CTRADER_API_PASSWORD", "password"),
 }
 
+# VPS Tick Data Configuration (tunneled to local port)
+VPS_TICK_API_CONFIG = {
+    "enabled": os.environ.get("VPS_TICK_ENABLED", "true").lower() == "true",
+    "url": os.environ.get("VPS_TICK_URL", "http://localhost:8020"),
+}
+
 # Trading Strategy Defaults
 STRATEGY_DEFAULTS = {
     "stop_loss_pips": 10,
