@@ -290,7 +290,8 @@ async def create_chart_from_backtest_json(json_filename: str) -> list[TextConten
                 initial_balance=backtest_data['configuration']['initial_balance'],
                 risk_per_trade=backtest_data['configuration']['risk_per_trade'],
                 stop_loss_pips=backtest_data['configuration']['stop_loss_pips'],
-                take_profit_pips=backtest_data['configuration']['take_profit_pips']
+                take_profit_pips=backtest_data['configuration']['take_profit_pips'],
+                trailing_stop=backtest_data['configuration'].get('trailing_stop', None)
             )
             
             # Create results object (for chart metadata)
@@ -461,6 +462,9 @@ async def create_strategy_chart(input_data: ChartBacktestInput) -> list[TextCont
                     text=f"❌ Strategy '{input_data.strategy_name}' not found"
                 )]
             
+            # Get trailing stop configuration from strategy if available
+            trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+            
             # Create backtest configuration
             config = BacktestConfiguration(
                 symbol=input_data.symbol,
@@ -471,7 +475,8 @@ async def create_strategy_chart(input_data: ChartBacktestInput) -> list[TextCont
                 risk_per_trade=0.02,
                 stop_loss_pips=input_data.stop_loss_pips,
                 take_profit_pips=input_data.take_profit_pips,
-                commission_per_trade=0.7
+                commission_per_trade=0.7,
+                trailing_stop=trailing_stop_config
             )
             
             # Run backtest using Universal Backtest Engine
@@ -608,6 +613,9 @@ async def create_performance_chart(input_data: PerformanceChartInput) -> list[Te
                     text=f"❌ Strategy '{input_data.strategy_name}' not found"
                 )]
             
+            # Get trailing stop configuration from strategy if available
+            trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+            
             config = BacktestConfiguration(
                 symbol=input_data.symbol,
                 timeframe=input_data.timeframe,
@@ -617,7 +625,8 @@ async def create_performance_chart(input_data: PerformanceChartInput) -> list[Te
                 risk_per_trade=0.02,
                 stop_loss_pips=15.0,
                 take_profit_pips=25.0,
-                commission_per_trade=0.7
+                commission_per_trade=0.7,
+                trailing_stop=trailing_stop_config
             )
             
             backtest_results = await engine.run_backtest(strategy, config)
@@ -692,6 +701,9 @@ async def compare_strategies_chart(input_data: CompareStrategiesChartInput) -> l
                 if not strategy:
                     continue
                 
+                # Get trailing stop configuration from strategy if available
+                trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+                
                 config = BacktestConfiguration(
                     symbol=input_data.symbol,
                     timeframe=input_data.timeframe,
@@ -701,7 +713,8 @@ async def compare_strategies_chart(input_data: CompareStrategiesChartInput) -> l
                     risk_per_trade=0.02,
                     stop_loss_pips=15.0,
                     take_profit_pips=25.0,
-                    commission_per_trade=0.7
+                    commission_per_trade=0.7,
+                    trailing_stop=trailing_stop_config
                 )
                 
                 results = await engine.run_backtest(strategy, config)

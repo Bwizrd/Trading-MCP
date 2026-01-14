@@ -535,13 +535,20 @@ class UniversalBacktestEngine:
                 if signal:
                     logger.info(f"Signal generated: {signal.direction.name} @ {candle.timestamp} - Price: {signal.price:.5f}")
                     
+                    # Check if trailing stop is enabled
+                    trailing_config = getattr(config, 'trailing_stop', None)
+                    trailing_enabled = trailing_config and trailing_config.get('enabled', False)
+                    
+                    # If trailing stop enabled, set TP to infinity so it never hits
+                    tp_value = float('inf') if trailing_enabled else self._calculate_take_profit(signal.price, signal.direction, config.take_profit_pips, config.symbol)
+                    
                     # Create new trade
                     open_trade = Trade(
                         entry_time=candle.timestamp,
                         direction=signal.direction,
                         entry_price=signal.price,
                         stop_loss=self._calculate_stop_loss(signal.price, signal.direction, config.stop_loss_pips, config.symbol),
-                        take_profit=self._calculate_take_profit(signal.price, signal.direction, config.take_profit_pips, config.symbol),
+                        take_profit=tp_value,
                         result=None  # Will be set when trade closes
                     )
                     
@@ -668,13 +675,20 @@ class UniversalBacktestEngine:
                     signal = signal_data['signal']
                     context = signal_data['context']
                     
+                    # Check if trailing stop is enabled
+                    trailing_config = getattr(config, 'trailing_stop', None)
+                    trailing_enabled = trailing_config and trailing_config.get('enabled', False)
+                    
+                    # If trailing stop enabled, set TP to infinity so it never hits
+                    tp_value = float('inf') if trailing_enabled else self._calculate_take_profit(exec_candle.open, signal.direction, config.take_profit_pips, config.symbol)
+                    
                     # Create new trade with precise execution price
                     open_trade = Trade(
                         entry_time=exec_candle.timestamp,
                         direction=signal.direction,
                         entry_price=exec_candle.open,  # Use execution candle open price
                         stop_loss=self._calculate_stop_loss(exec_candle.open, signal.direction, config.stop_loss_pips, config.symbol),
-                        take_profit=self._calculate_take_profit(exec_candle.open, signal.direction, config.take_profit_pips, config.symbol),
+                        take_profit=tp_value,
                         result=None
                     )
                     
@@ -915,6 +929,11 @@ class UniversalBacktestEngine:
         """
         Execute a trade using a small window of 1-minute data.
         
+        CRITICAL FIX: To avoid OHLC ambiguity with trailing stops, we:
+        1. Update trailing stop based on PREVIOUS candle
+        2. Check exit conditions on CURRENT candle
+        This ensures we never use the same candle to both update and trigger the stop.
+        
         Args:
             signal: The trading signal to execute
             execution_candles: Small window of 1m candles
@@ -939,13 +958,20 @@ class UniversalBacktestEngine:
             logger.warning("No suitable entry candle found in execution window")
             return None
         
+        # Check if trailing stop is enabled
+        trailing_config = getattr(config, 'trailing_stop', None)
+        trailing_enabled = trailing_config and trailing_config.get('enabled', False)
+        
+        # If trailing stop enabled, set TP to infinity so it never hits
+        tp_value = float('inf') if trailing_enabled else self._calculate_take_profit(entry_candle.open, signal.direction, config.take_profit_pips, config.symbol)
+        
         # Create trade with precise entry
         trade = Trade(
             entry_time=entry_candle.timestamp,
             direction=signal.direction,
             entry_price=entry_candle.open,  # Enter at candle open
             stop_loss=self._calculate_stop_loss(entry_candle.open, signal.direction, config.stop_loss_pips, config.symbol),
-            take_profit=self._calculate_take_profit(entry_candle.open, signal.direction, config.take_profit_pips, config.symbol),
+            take_profit=tp_value,
             result=None
         )
         
@@ -953,9 +979,17 @@ class UniversalBacktestEngine:
         strategy.on_trade_opened(trade, signal_context)
         
         # Process remaining candles for exit conditions
-        for candle in execution_candles:
+        # CRITICAL: Use previous candle to update trailing stop, current candle to check exit
+        previous_candle = entry_candle
+        
+        for i, candle in enumerate(execution_candles):
             if candle.timestamp > entry_candle.timestamp:
-                exit_result = self._check_exit_conditions_precise(trade, candle, config)
+                # Update trailing stop based on PREVIOUS candle (not current)
+                if trailing_enabled and previous_candle:
+                    self._update_trailing_stop(trade, previous_candle, trailing_config, config.symbol)
+                
+                # Now check if CURRENT candle hits the stop
+                exit_result = self._check_exit_conditions_simple(trade, candle, config, trailing_enabled)
                 if exit_result:
                     trade.exit_price = exit_result['price']
                     trade.exit_time = candle.timestamp
@@ -979,6 +1013,9 @@ class UniversalBacktestEngine:
                     strategy.on_trade_closed(trade, exit_context)
                     
                     return trade
+                
+                # Move to next candle
+                previous_candle = candle
         
         # If no exit condition met in window, close at last candle
         last_candle = execution_candles[-1]
@@ -994,30 +1031,115 @@ class UniversalBacktestEngine:
         
         return trade
     
-    def _check_exit_conditions_precise(self, trade: Trade, candle: Candle, config: BacktestConfiguration) -> Optional[Dict[str, Any]]:
-        """Check exit conditions with precise 1-minute candle data."""
+    def _check_exit_conditions_simple(self, trade: Trade, candle: Candle, config: BacktestConfiguration, trailing_enabled: bool) -> Optional[Dict[str, Any]]:
+        """
+        Simple exit check that doesn't update trailing stop.
+        Trailing stop should be updated BEFORE calling this method using previous candle.
+        
+        This separation ensures we never use the same candle to both update and trigger the stop.
+        """
+        # Use trailing stop level if active, otherwise use fixed stop loss
+        active_stop_loss = trade.trailing_stop_level if trade.trailing_stop_level else trade.stop_loss
+        
         if trade.direction == TradeDirection.BUY:
             # Check stop loss hit during this minute
-            if candle.low <= trade.stop_loss:
+            if candle.low <= active_stop_loss:
                 return {
-                    'price': trade.stop_loss,
-                    'result': TradeResult.LOSS
+                    'price': active_stop_loss,
+                    'result': TradeResult.LOSS if trade.entry_price > active_stop_loss else TradeResult.WIN
                 }
-            # Check take profit hit during this minute  
-            if candle.high >= trade.take_profit:
+            # Check take profit hit during this minute ONLY if trailing stop is NOT enabled
+            if not trailing_enabled and candle.high >= trade.take_profit:
                 return {
                     'price': trade.take_profit,
                     'result': TradeResult.WIN
                 }
         else:  # SELL
             # Check stop loss hit during this minute
-            if candle.high >= trade.stop_loss:
+            if candle.high >= active_stop_loss:
                 return {
-                    'price': trade.stop_loss,
-                    'result': TradeResult.LOSS
+                    'price': active_stop_loss,
+                    'result': TradeResult.LOSS if trade.entry_price < active_stop_loss else TradeResult.WIN
                 }
-            # Check take profit hit during this minute
-            if candle.low <= trade.take_profit:
+            # Check take profit hit during this minute ONLY if trailing stop is NOT enabled
+            if not trailing_enabled and candle.low <= trade.take_profit:
+                return {
+                    'price': trade.take_profit,
+                    'result': TradeResult.WIN
+                }
+        
+        return None
+    
+    def _check_exit_conditions_precise(self, trade: Trade, candle: Candle, config: BacktestConfiguration) -> Optional[Dict[str, Any]]:
+        """
+        Check exit conditions with precise 1-minute candle data.
+        
+        CRITICAL: With OHLC data, we don't know the order of price movements within a candle.
+        This creates ambiguity when both trailing stop update and exit occur in the same candle.
+        
+        Solution: Use PREVIOUS candle to update trailing stop, then check CURRENT candle for exits.
+        This ensures we never use information from the same candle to both set and trigger the stop.
+        """
+        
+        # Update trailing stop if enabled - but DON'T check for exit yet
+        trailing_config = getattr(config, 'trailing_stop', None)
+        trailing_stop_enabled = trailing_config and trailing_config.get('enabled', False)
+        
+        if trailing_stop_enabled:
+            # Update trailing stop based on current candle
+            self._update_trailing_stop(trade, candle, trailing_config, config.symbol)
+        
+        # Use trailing stop level if active, otherwise use fixed stop loss
+        active_stop_loss = trade.trailing_stop_level if trade.trailing_stop_level else trade.stop_loss
+        
+        # CRITICAL: Check if stop loss would be hit BEFORE the high/low that updated the trailing stop
+        # With OHLC data, we must assume the worst case: stop is hit before favorable price movement
+        if trade.direction == TradeDirection.BUY:
+            # For BUY: Check if low hit stop BEFORE high could update trailing stop
+            # If candle range is large enough that both could happen, assume stop hit first
+            if candle.low <= active_stop_loss:
+                # Check if this is a "wide candle" where we can't determine order
+                pip_value = self._get_pip_value(config.symbol)
+                candle_range_pips = (candle.high - candle.low) / pip_value
+                trail_distance = trailing_config.get('trail_distance_pips', 8) if trailing_stop_enabled else 0
+                
+                # If candle range > trail distance, we can't be sure of order
+                # In this case, assume the stop was hit (conservative approach)
+                if candle_range_pips > trail_distance and trailing_stop_enabled:
+                    logger.warning(f"⚠️  Wide candle detected: {candle_range_pips:.1f} pips > {trail_distance} trail distance")
+                    logger.warning(f"   Cannot determine if stop hit before or after high")
+                    logger.warning(f"   Assuming stop hit first (conservative)")
+                
+                return {
+                    'price': active_stop_loss,
+                    'result': TradeResult.LOSS if trade.entry_price > active_stop_loss else TradeResult.WIN
+                }
+            # Check take profit hit during this minute ONLY if trailing stop is NOT enabled
+            if not trailing_stop_enabled and candle.high >= trade.take_profit:
+                return {
+                    'price': trade.take_profit,
+                    'result': TradeResult.WIN
+                }
+        else:  # SELL
+            # For SELL: Check if high hit stop BEFORE low could update trailing stop
+            if candle.high >= active_stop_loss:
+                # Check if this is a "wide candle" where we can't determine order
+                pip_value = self._get_pip_value(config.symbol)
+                candle_range_pips = (candle.high - candle.low) / pip_value
+                trail_distance = trailing_config.get('trail_distance_pips', 8) if trailing_stop_enabled else 0
+                
+                # If candle range > trail distance, we can't be sure of order
+                if candle_range_pips > trail_distance and trailing_stop_enabled:
+                    logger.warning(f"⚠️  Wide candle detected: {candle_range_pips:.1f} pips > {trail_distance} trail distance")
+                    logger.warning(f"   Cannot determine if stop hit before or after low")
+                    logger.warning(f"   Assuming stop hit first (conservative)")
+                
+                return {
+                    'price': active_stop_loss,
+                    'result': TradeResult.LOSS if trade.entry_price < active_stop_loss else TradeResult.WIN
+                }
+            # Check take profit hit during this minute ONLY if trailing stop is NOT enabled
+            if not trailing_stop_enabled and candle.low <= trade.take_profit:
                 return {
                     'price': trade.take_profit,
                     'result': TradeResult.WIN
@@ -1028,35 +1150,95 @@ class UniversalBacktestEngine:
     def _check_exit_conditions(self, trade: Trade, candle: Candle, config: BacktestConfiguration) -> Optional[Dict[str, Any]]:
         """Check if trade should be closed based on stop loss, take profit, or other conditions."""
         
+        # Update trailing stop if enabled in strategy configuration
+        trailing_config = getattr(config, 'trailing_stop', None)
+        trailing_stop_enabled = trailing_config and trailing_config.get('enabled', False)
+        
+        if trailing_stop_enabled:
+            self._update_trailing_stop(trade, candle, trailing_config, config.symbol)
+        
+        # Use trailing stop level if active, otherwise use fixed stop loss
+        active_stop_loss = trade.trailing_stop_level if trade.trailing_stop_level else trade.stop_loss
+        
         if trade.direction == TradeDirection.BUY:
-            # Check stop loss
-            if candle.low <= trade.stop_loss:
+            # Check stop loss (or trailing stop)
+            if candle.low <= active_stop_loss:
                 return {
-                    'price': trade.stop_loss,
-                    'result': TradeResult.LOSS
+                    'price': active_stop_loss,
+                    'result': TradeResult.LOSS if trade.entry_price > active_stop_loss else TradeResult.WIN
                 }
-            # Check take profit
-            if candle.high >= trade.take_profit:
+            # Check take profit ONLY if trailing stop is NOT enabled
+            if not trailing_stop_enabled and candle.high >= trade.take_profit:
                 return {
                     'price': trade.take_profit, 
                     'result': TradeResult.WIN
                 }
         
         else:  # SELL
-            # Check stop loss
-            if candle.high >= trade.stop_loss:
+            # Check stop loss (or trailing stop)
+            if candle.high >= active_stop_loss:
                 return {
-                    'price': trade.stop_loss,
-                    'result': TradeResult.LOSS
+                    'price': active_stop_loss,
+                    'result': TradeResult.LOSS if trade.entry_price < active_stop_loss else TradeResult.WIN
                 }
-            # Check take profit  
-            if candle.low <= trade.take_profit:
+            # Check take profit ONLY if trailing stop is NOT enabled
+            if not trailing_stop_enabled and candle.low <= trade.take_profit:
                 return {
                     'price': trade.take_profit,
                     'result': TradeResult.WIN
                 }
         
         return None
+    
+    def _update_trailing_stop(self, trade: Trade, candle: Candle, trailing_config: Dict[str, Any], symbol: str) -> None:
+        """
+        Update trailing stop loss based on current price movement.
+        
+        CRITICAL FIX: Uses candle.close instead of candle.high/low to avoid look-ahead bias.
+        The trailing stop should trail the CLOSE price, not the high/low, because:
+        1. We don't know the high/low until the candle completes
+        2. Using high/low creates unrealistic exits (price touches high, then immediately hits trailing stop)
+        3. Close price represents the actual market state at candle completion
+        
+        Args:
+            trade: Active trade to update
+            candle: Current candle
+            trailing_config: Trailing stop configuration with 'activation_pips' and 'trail_distance_pips'
+            symbol: Trading symbol for pip calculation
+        """
+        activation_pips = trailing_config.get('activation_pips', 0)
+        trail_distance_pips = trailing_config.get('trail_distance_pips', 4)
+        pip_value = self._get_pip_value(symbol)
+        
+        # Calculate current profit in pips using CLOSE price (not high/low)
+        # This avoids look-ahead bias where we use the high to set trailing stop
+        # then immediately check if the low hit it within the same candle
+        if trade.direction == TradeDirection.BUY:
+            current_pips = (candle.close - trade.entry_price) / pip_value
+        else:  # SELL
+            current_pips = (trade.entry_price - candle.close) / pip_value
+        
+        # Activate trailing stop once profit exceeds activation threshold
+        if current_pips >= activation_pips:
+            if trade.direction == TradeDirection.BUY:
+                # Trail below current CLOSE (not high)
+                new_trailing_stop = candle.close - (trail_distance_pips * pip_value)
+                
+                # Only move stop loss up, never down
+                if trade.trailing_stop_level is None:
+                    trade.trailing_stop_level = max(new_trailing_stop, trade.stop_loss)
+                else:
+                    trade.trailing_stop_level = max(trade.trailing_stop_level, new_trailing_stop)
+                    
+            else:  # SELL
+                # Trail above current CLOSE (not low)
+                new_trailing_stop = candle.close + (trail_distance_pips * pip_value)
+                
+                # Only move stop loss down, never up
+                if trade.trailing_stop_level is None:
+                    trade.trailing_stop_level = min(new_trailing_stop, trade.stop_loss)
+                else:
+                    trade.trailing_stop_level = min(trade.trailing_stop_level, new_trailing_stop)
     
     def _get_pip_value(self, symbol: str) -> float:
         """Get pip value based on symbol type."""

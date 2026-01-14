@@ -1,0 +1,155 @@
+//@version=5
+strategy("Stochastic Quad Rotation - SIMPLE", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ============================================================================
+// LIVE TRADING RECOMMENDATIONS
+// ============================================================================
+// SPREAD IMPACT: US500 typical spread is 0.5-1.0 points
+// Small wins (0.5-2 points) become breakeven/losses after spread costs
+// 
+// RECOMMENDED SETTINGS FOR LIVE TRADING:
+// 1. Safety Net: ENABLED (default) - Lets trades run until opposite rotation
+// 2. Trailing Stop Distance: 15-20 points (captures bigger moves)
+// 3. Trailing Activation: 10-15 points (ensures profit before trailing)
+// 
+// BACKTEST RESULTS (1pt activation, 8pt trail):
+// - 453 trades, 242.5 GBP profit (+9.70%)
+// - BUT: 43% of wins are ≤1 point (wiped out by spreads)
+// - Solution: Enable Safety Net OR use wider trailing stops
+// ============================================================================
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+
+// Stochastic Parameters
+k1 = input.int(9, "Fast K Period")
+d1 = input.int(3, "Fast D Smoothing")
+k2 = input.int(14, "Med-Fast K Period")
+d2 = input.int(3, "Med-Fast D Smoothing")
+k3 = input.int(40, "Med-Slow K Period")
+d3 = input.int(4, "Med-Slow D Smoothing")
+k4 = input.int(60, "Slow K Period")
+d4 = input.int(10, "Slow D Smoothing")
+
+// Zone Levels
+oversold_level = input.int(20, "Oversold Level")
+overbought_level = input.int(80, "Overbought Level")
+
+// Risk Management
+stop_loss_points = input.float(8.0, "Stop Loss (Points)", tooltip="For US500: 8-15 points, For NAS100: 15-25 points")
+take_profit_points = input.float(8.0, "Take Profit (Points)", tooltip="For US500: 8-15 points, For NAS100: 15-25 points")
+point_value = input.float(1.0, "Point Value (Tick Size)", tooltip="US500=1.0, NAS100=1.0, Forex=0.0001")
+
+// Safety Net Exit - RECOMMENDED FOR LIVE TRADING
+enable_safety_net = input.bool(false, "Enable Safety Net Rotation Exit", tooltip="Exit when opposite rotation is detected - RECOMMENDED to capture bigger moves and avoid spread losses. DISABLE to test pure fixed SL/TP.")
+safety_net_oversold = input.int(10, "Safety Net Oversold Exit Level", minval=5, maxval=20, tooltip="SHORT exits when med-fast D reaches this level (more stable than fast)")
+safety_net_overbought = input.int(90, "Safety Net Overbought Exit Level", minval=80, maxval=95, tooltip="LONG exits when med-fast D reaches this level (more stable than fast)")
+
+
+
+// ============================================================================
+// STOCHASTIC CALCULATIONS
+// ============================================================================
+
+stoch(k_period, d_period) =>
+    k = ta.stoch(close, high, low, k_period)
+    d = ta.sma(k, d_period)
+    [k, d]
+
+[k_fast, d_fast] = stoch(k1, d1)
+[k_med_fast, d_med_fast] = stoch(k2, d2)
+[k_med_slow, d_med_slow] = stoch(k3, d3)
+[k_slow, d_slow] = stoch(k4, d4)
+
+// ============================================================================
+// SIGNAL LOGIC - CORRECT VERSION
+// ============================================================================
+
+// Check if all 4 stochastics WERE in zone on PREVIOUS bar (D values only)
+all_oversold_prev = d_fast[1] < oversold_level and d_med_fast[1] < oversold_level and d_med_slow[1] < oversold_level and d_slow[1] < oversold_level
+
+all_overbought_prev = d_fast[1] > overbought_level and d_med_fast[1] > overbought_level and d_med_slow[1] > overbought_level and d_slow[1] > overbought_level
+
+// Detect when fast stochastic crosses out of zone on CURRENT bar (the "rotation")
+fast_crosses_above = ta.crossover(k_fast, oversold_level)
+fast_crosses_below = ta.crossunder(k_fast, overbought_level)
+
+// BUY: All WERE in oversold (prev bar) AND fast crosses above oversold (current bar)
+buy_signal = all_oversold_prev and fast_crosses_above
+
+// SELL: All WERE in overbought (prev bar) AND fast crosses below overbought (current bar)
+sell_signal = all_overbought_prev and fast_crosses_below
+
+// ============================================================================
+// STRATEGY EXECUTION WITH WEBHOOK ALERTS
+// ============================================================================
+
+// Calculate actual price distance for stops/targets
+sl_distance = stop_loss_points * point_value
+tp_distance = take_profit_points * point_value
+
+// ============================================================================
+// STRATEGY EXECUTION
+// ============================================================================
+
+// Track if we've set exit orders for current position
+var bool exit_set = false
+
+// Only enter if not already in a position
+if buy_signal and strategy.position_size == 0
+    comment_text = "Long|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
+    strategy.entry("Long", strategy.long, comment=comment_text)
+    exit_set := false
+
+if sell_signal and strategy.position_size == 0
+    comment_text = "Short|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
+    strategy.entry("Short", strategy.short, comment=comment_text)
+    exit_set := false
+
+// Set exit orders ONCE after entry - FIXED SL/TP ONLY
+if strategy.position_size != 0 and not exit_set
+    entry_price = strategy.position_avg_price
+    if strategy.position_size > 0  // Long position
+        strategy.exit("Exit Long", "Long", stop=entry_price - sl_distance, limit=entry_price + tp_distance, comment="Exit Long")
+    else  // Short position
+        strategy.exit("Exit Short", "Short", stop=entry_price + sl_distance, limit=entry_price - tp_distance, comment="Exit Short")
+    exit_set := true
+
+// Reset flag when position closes
+if strategy.position_size == 0
+    exit_set := false
+
+// Safety Net Exit - Close on opposite rotation
+if enable_safety_net
+    // Exit LONG when med-fast D reaches overbought (more stable than fast stochastic)
+    if strategy.position_size > 0 and d_med_fast >= safety_net_overbought
+        strategy.close("Long", comment="Exit Long")
+    
+    // Exit SHORT when med-fast D reaches oversold (more stable than fast stochastic)
+    if strategy.position_size < 0 and d_med_fast <= safety_net_oversold
+        strategy.close("Short", comment="Exit Short")
+
+// ============================================================================
+// PLOTTING - Invisible plots for webhook data
+// ============================================================================
+
+// Current bar stochastic values (plot_0 to plot_7)
+plot(k_fast, "K Fast", display=display.none)
+plot(d_fast, "D Fast", display=display.none)
+plot(k_med_fast, "K Med Fast", display=display.none)
+plot(d_med_fast, "D Med Fast", display=display.none)
+plot(k_med_slow, "K Med Slow", display=display.none)
+plot(d_med_slow, "D Med Slow", display=display.none)
+plot(k_slow, "K Slow", display=display.none)
+plot(d_slow, "D Slow", display=display.none)
+
+// Previous bar stochastic values (plot_8 to plot_15)
+plot(k_fast[1], "K Fast Prev", display=display.none)
+plot(d_fast[1], "D Fast Prev", display=display.none)
+plot(k_med_fast[1], "K Med Fast Prev", display=display.none)
+plot(d_med_fast[1], "D Med Fast Prev", display=display.none)
+plot(k_med_slow[1], "K Med Slow Prev", display=display.none)
+plot(d_med_slow[1], "D Med Slow Prev", display=display.none)
+plot(k_slow[1], "K Slow Prev", display=display.none)
+plot(d_slow[1], "D Slow Prev", display=display.none)

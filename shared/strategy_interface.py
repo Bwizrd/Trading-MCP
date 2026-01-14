@@ -280,6 +280,7 @@ class BacktestConfiguration:
     max_open_trades: int = 1
     commission_per_trade: float = 0.0
     use_tick_data: bool = False  # Use tick data instead of OHLCV candles (10-day retention)
+    trailing_stop: Optional[Dict[str, Any]] = None  # Trailing stop configuration
     
     def __post_init__(self):
         """Validate configuration parameters."""

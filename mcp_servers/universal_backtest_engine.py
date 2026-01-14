@@ -205,6 +205,23 @@ async def list_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "Use tick data instead of OHLCV candles (only last 10 days available due to retention policy)",
                         "default": False
+                    },
+                    "trailing_stop_enabled": {
+                        "type": "boolean",
+                        "description": "Enable trailing stop (overrides strategy default)",
+                        "default": None
+                    },
+                    "trailing_stop_activation_pips": {
+                        "type": "number",
+                        "description": "Pips of profit before trailing stop activates (overrides strategy default)",
+                        "minimum": 0,
+                        "default": None
+                    },
+                    "trailing_stop_distance_pips": {
+                        "type": "number",
+                        "description": "Distance in pips for trailing stop (overrides strategy default)",
+                        "minimum": 1,
+                        "default": None
                     }
                 },
                 "required": ["strategy_name"],
@@ -546,6 +563,38 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         # Create strategy instance
         strategy = registry.create_strategy(strategy_name, strategy_parameters)
         
+        # Get trailing stop configuration from strategy if available
+        trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+        
+        # Override with runtime parameters if provided
+        if arguments.get("trailing_stop_enabled") is not None:
+            if arguments.get("trailing_stop_enabled"):
+                # Build trailing stop config from runtime parameters
+                trailing_stop_config = {
+                    "enabled": True,
+                    "activation_pips": arguments.get("trailing_stop_activation_pips", 
+                                                    trailing_stop_config.get("activation_pips", 4) if trailing_stop_config else 4),
+                    "trail_distance_pips": arguments.get("trailing_stop_distance_pips",
+                                                        trailing_stop_config.get("trail_distance_pips", 2) if trailing_stop_config else 2)
+                }
+            else:
+                # Explicitly disable trailing stop
+                trailing_stop_config = None
+        elif trailing_stop_config and (arguments.get("trailing_stop_activation_pips") is not None or 
+                                       arguments.get("trailing_stop_distance_pips") is not None):
+            # Update existing config with runtime overrides
+            trailing_stop_config = trailing_stop_config.copy() if trailing_stop_config else {"enabled": True}
+            if arguments.get("trailing_stop_activation_pips") is not None:
+                trailing_stop_config["activation_pips"] = arguments.get("trailing_stop_activation_pips")
+            if arguments.get("trailing_stop_distance_pips") is not None:
+                trailing_stop_config["trail_distance_pips"] = arguments.get("trailing_stop_distance_pips")
+        
+        # DEBUG: Log trailing stop extraction
+        logger.info(f"🔍 TRAILING STOP DEBUG:")
+        logger.info(f"   Strategy type: {type(strategy).__name__}")
+        logger.info(f"   Has trailing_stop attr: {hasattr(strategy, 'trailing_stop')}")
+        logger.info(f"   Final trailing_stop_config: {trailing_stop_config}")
+        
         # Create backtest configuration
         config = BacktestConfiguration(
             symbol=symbol,
@@ -556,7 +605,8 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
             risk_per_trade=risk_per_trade,
             stop_loss_pips=stop_loss_pips,
             take_profit_pips=take_profit_pips,
-            use_tick_data=use_tick_data
+            use_tick_data=use_tick_data,
+            trailing_stop=trailing_stop_config
         )
         
         # Run backtest
@@ -690,6 +740,10 @@ async def handle_compare_strategies(registry: StrategyRegistry, engine: Universa
         try:
             # Create strategy and config
             strategy = registry.create_strategy(strategy_name)
+            
+            # Get trailing stop configuration from strategy if available
+            trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+            
             config = BacktestConfiguration(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -697,7 +751,8 @@ async def handle_compare_strategies(registry: StrategyRegistry, engine: Universa
                 end_date=end_date,
                 initial_balance=initial_balance,
                 stop_loss_pips=stop_loss_pips,
-                take_profit_pips=take_profit_pips
+                take_profit_pips=take_profit_pips,
+                trailing_stop=trailing_stop_config
             )
             
             # Run backtest
@@ -1005,6 +1060,12 @@ async def handle_bulk_backtest(registry: StrategyRegistry, engine: UniversalBack
                 completed += 1
                 
                 try:
+                    # Get strategy first to access trailing stop config
+                    strategy = registry.create_strategy(strategy_name)
+                    
+                    # Get trailing stop configuration from strategy if available
+                    trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+                    
                     # Create configuration
                     config = BacktestConfiguration(
                         symbol=symbol,
@@ -1014,11 +1075,9 @@ async def handle_bulk_backtest(registry: StrategyRegistry, engine: UniversalBack
                         initial_balance=10000,
                         risk_per_trade=0.02,
                         stop_loss_pips=stop_loss,
-                        take_profit_pips=take_profit
+                        take_profit_pips=take_profit,
+                        trailing_stop=trailing_stop_config
                     )
-                    
-                    # Get strategy
-                    strategy = registry.create_strategy(strategy_name)
                     
                     # Run backtest
                     start_time = datetime.now()

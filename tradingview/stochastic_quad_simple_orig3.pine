@@ -1,0 +1,111 @@
+//@version=5
+strategy("Stochastic Quad Rotation - SIMPLE", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+
+// Stochastic Parameters
+k1 = input.int(9, "Fast K Period")
+d1 = input.int(3, "Fast D Smoothing")
+k2 = input.int(14, "Med-Fast K Period")
+d2 = input.int(3, "Med-Fast D Smoothing")
+k3 = input.int(40, "Med-Slow K Period")
+d3 = input.int(4, "Med-Slow D Smoothing")
+k4 = input.int(60, "Slow K Period")
+d4 = input.int(10, "Slow D Smoothing")
+
+// Zone Levels
+oversold_level = input.int(20, "Oversold Level")
+overbought_level = input.int(80, "Overbought Level")
+
+// Risk Management
+stop_loss_points = input.float(8.0, "Stop Loss (Points)", tooltip="For US500: 8-15 points, For NAS100: 15-25 points")
+take_profit_points = input.float(8.0, "Take Profit (Points)", tooltip="For US500: 8-15 points, For NAS100: 15-25 points")
+point_value = input.float(1.0, "Point Value (Tick Size)", tooltip="US500=1.0, NAS100=1.0, Forex=0.0001")
+
+// Trailing Stop
+use_trailing = input.bool(true, "Enable Trailing Stop", tooltip="Use trailing stop instead of fixed take profit - RECOMMENDED for bigger winners")
+trail_points = input.float(6.0, "Trailing Stop Distance (Points)", tooltip="Distance in points to trail behind price (try 6-8 for US500)")
+trail_offset = input.float(12.0, "Trailing Activation (Points Profit)", tooltip="Trade must be this many points in profit before trailing activates (try 10-15)")
+
+// Safety Net Exit
+enable_safety_net = input.bool(false, "Enable Safety Net Rotation Exit", tooltip="Exit when opposite rotation is detected")
+safety_net_oversold = input.int(20, "Safety Net Oversold Exit Level", minval=10, maxval=30, tooltip="SHORT exits when fast D reaches this level")
+safety_net_overbought = input.int(80, "Safety Net Overbought Exit Level", minval=70, maxval=90, tooltip="LONG exits when fast D reaches this level")
+
+
+
+// ============================================================================
+// STOCHASTIC CALCULATIONS
+// ============================================================================
+
+stoch(k_period, d_period) =>
+    k = ta.stoch(close, high, low, k_period)
+    d = ta.sma(k, d_period)
+    [k, d]
+
+[k_fast, d_fast] = stoch(k1, d1)
+[k_med_fast, d_med_fast] = stoch(k2, d2)
+[k_med_slow, d_med_slow] = stoch(k3, d3)
+[k_slow, d_slow] = stoch(k4, d4)
+
+// ============================================================================
+// SIGNAL LOGIC - CORRECT VERSION
+// ============================================================================
+
+// Check if all 4 stochastics WERE in zone on PREVIOUS bar
+all_oversold_prev = k_fast[1] < oversold_level and k_med_fast[1] < oversold_level and k_med_slow[1] < oversold_level and k_slow[1] < oversold_level
+
+all_overbought_prev = k_fast[1] > overbought_level and k_med_fast[1] > overbought_level and k_med_slow[1] > overbought_level and k_slow[1] > overbought_level
+
+// Detect when fast stochastic crosses out of zone on CURRENT bar (the "rotation")
+fast_crosses_above = ta.crossover(k_fast, oversold_level)
+fast_crosses_below = ta.crossunder(k_fast, overbought_level)
+
+// BUY: All WERE in oversold (prev bar) AND fast crosses above oversold (current bar)
+buy_signal = all_oversold_prev and fast_crosses_above
+
+// SELL: All WERE in overbought (prev bar) AND fast crosses below overbought (current bar)
+sell_signal = all_overbought_prev and fast_crosses_below
+
+// ============================================================================
+// STRATEGY EXECUTION
+// ============================================================================
+
+// Calculate actual price distance for stops/targets
+sl_distance = stop_loss_points * point_value
+tp_distance = take_profit_points * point_value
+trail_distance = trail_points * point_value
+trail_offset_distance = trail_offset * point_value
+
+// Only enter if not already in a position
+if buy_signal and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+    if use_trailing
+        strategy.exit("Exit Long", "Long", stop=close - sl_distance, trail_points=trail_points, trail_offset=trail_offset)
+    else
+        strategy.exit("Exit Long", "Long", stop=close - sl_distance, limit=close + tp_distance)
+
+if sell_signal and strategy.position_size == 0
+    strategy.entry("Short", strategy.short)
+    if use_trailing
+        strategy.exit("Exit Short", "Short", stop=close + sl_distance, trail_points=trail_points, trail_offset=trail_offset)
+    else
+        strategy.exit("Exit Short", "Short", stop=close + sl_distance, limit=close - tp_distance)
+
+// Safety Net Exit - Close on opposite rotation
+if enable_safety_net
+    // Exit LONG when fast D reaches overbought (opposite rotation detected)
+    if strategy.position_size > 0 and d_fast >= safety_net_overbought
+        strategy.close("Long", comment="Safety Net")
+    
+    // Exit SHORT when fast D reaches oversold (opposite rotation detected)
+    if strategy.position_size < 0 and d_fast <= safety_net_oversold
+        strategy.close("Short", comment="Safety Net")
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// No visual indicators plotted - strategy runs in background

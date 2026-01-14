@@ -1,0 +1,317 @@
+//@version=5
+strategy("Stochastic Quad Rotation", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+
+// Stochastic Parameters
+group_stoch = "Stochastic Settings"
+k1 = input.int(9, "Fast K Period", minval=1, group=group_stoch)
+d1 = input.int(3, "Fast D Smoothing", minval=1, group=group_stoch)
+
+k2 = input.int(14, "Med-Fast K Period", minval=1, group=group_stoch)
+d2 = input.int(3, "Med-Fast D Smoothing", minval=1, group=group_stoch)
+
+k3 = input.int(40, "Med-Slow K Period", minval=1, group=group_stoch)
+d3 = input.int(4, "Med-Slow D Smoothing", minval=1, group=group_stoch)
+
+k4 = input.int(60, "Slow K Period", minval=1, group=group_stoch)
+d4 = input.int(10, "Slow D Smoothing", minval=1, group=group_stoch)
+
+// Zone Levels
+group_zones = "Zone Levels"
+oversold_level = input.int(20, "Oversold Level", minval=0, maxval=50, group=group_zones)
+overbought_level = input.int(80, "Overbought Level", minval=50, maxval=100, group=group_zones)
+max_wait_bars = input.int(8, "Max Wait Bars After Zone", minval=1, maxval=20, group=group_zones, tooltip="How long to wait for rotation after all stochastics reach zone")
+
+// Risk Management
+group_risk = "Risk Management"
+pip_mode = input.string("Index/Stock (1.0)", "Pip Calculation Mode", options=["Auto", "Forex (0.0001)", "Forex JPY (0.01)", "Index/Stock (1.0)", "Crypto (1.0)"], group=group_risk, tooltip="For US500/NAS100 use 'Index/Stock (1.0)'. 1 pip = 1 point.")
+stop_loss_pips = input.float(15.0, "Stop Loss (Points)", minval=1, step=0.5, group=group_risk, tooltip="For indices: 15-25 points typical")
+take_profit_pips = input.float(25.0, "Take Profit (Points)", minval=1, step=0.5, group=group_risk, tooltip="For indices: 25-40 points typical")
+
+// Safety Net Exit
+group_safety = "Safety Net Exit"
+enable_safety_net = input.bool(true, "Enable Safety Net Exit", group=group_safety)
+safety_net_oversold = input.int(20, "Safety Net Oversold Level", minval=10, maxval=30, group=group_safety, tooltip="SHORT exits when fast D reaches this level")
+safety_net_overbought = input.int(80, "Safety Net Overbought Level", minval=70, maxval=90, group=group_safety, tooltip="LONG exits when fast D reaches this level")
+
+// Trailing Stop
+group_trailing = "Trailing Stop"
+enable_trailing = input.bool(false, "Enable Trailing Stop", group=group_trailing, tooltip="Optional - test both ON and OFF")
+trailing_distance_pips = input.float(10.0, "Trailing Distance (Points)", minval=1, step=0.5, group=group_trailing, tooltip="For indices: 8-15 points typical")
+trailing_activation_pips = input.float(8.0, "Activation Profit (Points)", minval=0, step=0.5, group=group_trailing, tooltip="For indices: 6-10 points typical. Trade must be this profitable before trailing activates")
+
+// Swing-Based Stop Loss
+group_swing = "Swing-Based Stop Loss"
+enable_swing_stop = input.bool(true, "Enable Swing-Based Stop", group=group_swing, tooltip="Recommended for indices - uses recent swing highs/lows")
+swing_lookback = input.int(5, "Swing Lookback Bars", minval=1, maxval=20, group=group_swing, tooltip="Look back this many bars for swing high/low")
+swing_offset_pips = input.float(2.0, "Swing Offset (Points)", minval=0, step=0.5, group=group_swing, tooltip="Additional buffer beyond swing high/low. For indices: 2-5 points typical")
+
+// Trading Hours Filter
+group_time = "Trading Hours (UTC)"
+use_time_filter = input.bool(false, "Enable Time Filter", group=group_time, tooltip="Disable for 24/7 markets or if you want signals anytime")
+start_hour = input.int(14, "Start Hour", minval=0, maxval=23, group=group_time)
+start_minute = input.int(30, "Start Minute", minval=0, maxval=59, group=group_time)
+end_hour = input.int(21, "End Hour", minval=0, maxval=23, group=group_time)
+end_minute = input.int(0, "End Minute", minval=0, maxval=59, group=group_time)
+
+// Trend Strength Filter
+group_trend = "Trend Strength Filter"
+use_trend_filter = input.bool(false, "Enable Trend Filter", group=group_trend, tooltip="Disable to get more signals in all market conditions")
+min_range_pips = input.float(10.0, "Min Range (Pips)", minval=0, step=0.5, group=group_trend)
+lookback_bars = input.int(10, "Lookback Bars", minval=1, group=group_trend)
+
+// Display Options
+group_display = "Display Options"
+show_stochastics = input.bool(true, "Show Stochastics", group=group_display)
+show_zones = input.bool(true, "Show Zone Lines", group=group_display)
+show_trade_labels = input.bool(true, "Show Trade Info Labels", group=group_display, tooltip="Display entry/stop/target prices on chart")
+
+// ============================================================================
+// STOCHASTIC CALCULATIONS
+// ============================================================================
+
+// Calculate Stochastic with K smoothing = 1 (no smoothing on K)
+stoch(k_period, d_period) =>
+    k = ta.stoch(close, high, low, k_period)
+    d = ta.sma(k, d_period)
+    [k, d]
+
+// Calculate all four stochastics
+[k_fast, d_fast] = stoch(k1, d1)
+[k_med_fast, d_med_fast] = stoch(k2, d2)
+[k_med_slow, d_med_slow] = stoch(k3, d3)
+[k_slow, d_slow] = stoch(k4, d4)
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+// Convert pips to price for current symbol
+pips_to_price(pips) =>
+    point_value = syminfo.mintick
+    
+    // Use manual override if specified
+    if pip_mode == "Forex (0.0001)"
+        pips * 0.0001
+    else if pip_mode == "Forex JPY (0.01)"
+        pips * 0.01
+    else if pip_mode == "Index/Stock (1.0)"
+        pips * 1.0
+    else if pip_mode == "Crypto (1.0)"
+        pips * 1.0
+    else
+        // Auto-detect
+        is_jpy_pair = str.contains(syminfo.ticker, "JPY")
+        is_forex = syminfo.type == "forex"
+        
+        if is_forex
+            if is_jpy_pair
+                pips * 0.01  // JPY pairs: 1 pip = 0.01
+            else
+                pips * 0.0001  // Standard forex: 1 pip = 0.0001
+        else
+            // For indices, stocks, crypto: 1 pip = 1 point
+            pips * 1.0
+
+// Check if current time is within trading hours
+in_trading_hours() =>
+    if not use_time_filter
+        true
+    else
+        current_time = hour * 60 + minute
+        start_time = start_hour * 60 + start_minute
+        end_time = end_hour * 60 + end_minute
+        current_time >= start_time and current_time <= end_time
+
+// Check trend strength (range in last N bars)
+has_sufficient_trend() =>
+    if not use_trend_filter
+        true
+    else
+        highest_price = ta.highest(high, lookback_bars)
+        lowest_price = ta.lowest(low, lookback_bars)
+        range_price = highest_price - lowest_price
+        range_pips = range_price / pips_to_price(1)
+        range_pips >= min_range_pips
+
+// ============================================================================
+// SIGNAL LOGIC
+// ============================================================================
+
+// Check if all stochastics are in oversold zone
+all_oversold = k_fast < oversold_level and k_med_fast < oversold_level and k_med_slow < oversold_level and k_slow < oversold_level
+
+// Check if all stochastics are in overbought zone
+all_overbought = k_fast > overbought_level and k_med_fast > overbought_level and k_med_slow > overbought_level and k_slow > overbought_level
+
+// Detect rotation (crossover of fast stochastic)
+fast_crosses_above = ta.crossover(k_fast, oversold_level)
+fast_crosses_below = ta.crossunder(k_fast, overbought_level)
+
+// Alternative: Check if all were recently in zone (within last few bars)
+var int bars_since_all_oversold = 999
+var int bars_since_all_overbought = 999
+
+if all_oversold
+    bars_since_all_oversold := 0
+else
+    bars_since_all_oversold := bars_since_all_oversold + 1
+
+if all_overbought
+    bars_since_all_overbought := 0
+else
+    bars_since_all_overbought := bars_since_all_overbought + 1
+
+// Buy Signal: All were recently oversold (within max wait bars), fast crosses above
+// This matches the "Max Wait Bars" concept from DAY_TRADING_RADIO
+buy_signal = bars_since_all_oversold <= max_wait_bars and fast_crosses_above and in_trading_hours() and has_sufficient_trend()
+
+// Sell Signal: All were recently overbought (within max wait bars), fast crosses below
+sell_signal = bars_since_all_overbought <= max_wait_bars and fast_crosses_below and in_trading_hours() and has_sufficient_trend()
+
+// ============================================================================
+// STRATEGY EXECUTION
+// ============================================================================
+
+// Variables to track entry price and trailing stop
+var float entry_price = na
+var float trailing_stop_level = na
+var bool trailing_active = false
+
+// Calculate stop loss and take profit levels
+sl_distance = pips_to_price(stop_loss_pips)
+tp_distance = pips_to_price(take_profit_pips)
+
+// Execute entries
+if buy_signal
+    entry_price := close
+    trailing_stop_level := na
+    trailing_active := false
+    
+    // Calculate swing-based stop if enabled
+    swing_stop = enable_swing_stop ? ta.lowest(low, swing_lookback)[1] - pips_to_price(swing_offset_pips) : close - sl_distance
+    target_price = close + tp_distance
+    
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", stop=swing_stop, limit=target_price)
+    
+    // Debug label
+    if show_trade_labels
+        label.new(bar_index, low, "LONG\nEntry: " + str.tostring(close, format.mintick) + "\nStop: " + str.tostring(swing_stop, format.mintick) + "\nTarget: " + str.tostring(target_price, format.mintick), style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+
+if sell_signal
+    entry_price := close
+    trailing_stop_level := na
+    trailing_active := false
+    
+    // Calculate swing-based stop if enabled
+    swing_stop = enable_swing_stop ? ta.highest(high, swing_lookback)[1] + pips_to_price(swing_offset_pips) : close + sl_distance
+    target_price = close - tp_distance
+    
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", stop=swing_stop, limit=target_price)
+    
+    // Debug label
+    if show_trade_labels
+        label.new(bar_index, high, "SHORT\nEntry: " + str.tostring(close, format.mintick) + "\nStop: " + str.tostring(swing_stop, format.mintick) + "\nTarget: " + str.tostring(target_price, format.mintick), style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)
+
+// ============================================================================
+// ADVANCED EXIT LOGIC
+// ============================================================================
+
+// 1. SAFETY NET EXIT (Highest Priority)
+if enable_safety_net and strategy.position_size != 0
+    // Exit LONG when fast D reaches overbought
+    if strategy.position_size > 0 and d_fast >= safety_net_overbought
+        strategy.close("Long", comment="Safety Net")
+    
+    // Exit SHORT when fast D reaches oversold
+    if strategy.position_size < 0 and d_fast <= safety_net_oversold
+        strategy.close("Short", comment="Safety Net")
+
+// 2. TRAILING STOP (Second Priority)
+if enable_trailing and strategy.position_size != 0
+    // For LONG positions
+    if strategy.position_size > 0
+        profit_pips = (close - entry_price) / pips_to_price(1)
+        
+        // Activate trailing stop when profit threshold reached
+        if profit_pips >= trailing_activation_pips
+            trailing_active := true
+            new_trail = close - pips_to_price(trailing_distance_pips)
+            
+            // Update trailing stop (only move up, never down)
+            if na(trailing_stop_level) or new_trail > trailing_stop_level
+                trailing_stop_level := new_trail
+        
+        // Exit if price hits trailing stop
+        if trailing_active and not na(trailing_stop_level) and close <= trailing_stop_level
+            strategy.close("Long", comment="Trailing Stop")
+            trailing_active := false
+    
+    // For SHORT positions
+    if strategy.position_size < 0
+        profit_pips = (entry_price - close) / pips_to_price(1)
+        
+        // Activate trailing stop when profit threshold reached
+        if profit_pips >= trailing_activation_pips
+            trailing_active := true
+            new_trail = close + pips_to_price(trailing_distance_pips)
+            
+            // Update trailing stop (only move down, never up)
+            if na(trailing_stop_level) or new_trail < trailing_stop_level
+                trailing_stop_level := new_trail
+        
+        // Exit if price hits trailing stop
+        if trailing_active and not na(trailing_stop_level) and close >= trailing_stop_level
+            strategy.close("Short", comment="Trailing Stop")
+            trailing_active := false
+
+// Reset variables when no position
+if strategy.position_size == 0
+    entry_price := na
+    trailing_stop_level := na
+    trailing_active := false
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// Plot buy/sell signals on chart (only when actually entering)
+plotshape(buy_signal and strategy.position_size == 0, "Buy Signal", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(sell_signal and strategy.position_size == 0, "Sell Signal", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// Plot trailing stop level
+plot(trailing_active and not na(trailing_stop_level) ? trailing_stop_level : na, "Trailing Stop", color=color.orange, linewidth=2, style=plot.style_linebr)
+
+// Plot entry price line
+plot(strategy.position_size != 0 ? entry_price : na, "Entry Price", color=color.blue, linewidth=1, style=plot.style_linebr)
+
+// Plot stochastics in separate pane
+// Fast Stochastic (Blue)
+plot(show_stochastics ? k_fast : na, "Fast K", color=color.new(color.blue, 0), linewidth=1)
+plot(show_stochastics ? d_fast : na, "Fast D", color=color.new(color.blue, 50), linewidth=1)
+
+// Med-Fast Stochastic (Green)
+plot(show_stochastics ? k_med_fast : na, "Med-Fast K", color=color.new(color.green, 0), linewidth=1)
+plot(show_stochastics ? d_med_fast : na, "Med-Fast D", color=color.new(color.green, 50), linewidth=1)
+
+// Med-Slow Stochastic (Orange)
+plot(show_stochastics ? k_med_slow : na, "Med-Slow K", color=color.new(color.orange, 0), linewidth=1)
+plot(show_stochastics ? d_med_slow : na, "Med-Slow D", color=color.new(color.orange, 50), linewidth=1)
+
+// Slow Stochastic (Red)
+plot(show_stochastics ? k_slow : na, "Slow K", color=color.new(color.red, 0), linewidth=1)
+plot(show_stochastics ? d_slow : na, "Slow D", color=color.new(color.red, 50), linewidth=1)
+
+// Plot zone reference lines
+hline(show_zones ? oversold_level : na, "Oversold", color=color.new(color.green, 70), linestyle=hline.style_dashed)
+hline(show_zones ? 50 : na, "Midline", color=color.new(color.gray, 70), linestyle=hline.style_dotted)
+hline(show_zones ? overbought_level : na, "Overbought", color=color.new(color.red, 70), linestyle=hline.style_dashed)
+
+// Background color for zone conditions
+bgcolor(all_oversold ? color.new(color.green, 95) : na, title="Oversold Zone")
+bgcolor(all_overbought ? color.new(color.red, 95) : na, title="Overbought Zone")

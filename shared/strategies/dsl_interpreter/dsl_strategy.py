@@ -120,6 +120,9 @@ class DSLStrategy(TradingStrategy):
         self.min_pip_distance = risk_mgmt.get("min_pip_distance", 0.0001)
         self.execution_window_minutes = risk_mgmt.get("execution_window_minutes", 1440)
         
+        # Trailing stop configuration
+        self.trailing_stop = risk_mgmt.get("trailing_stop", None)
+        
         # Trend strength filter (for reversal strategies)
         self.min_trend_range_pips = risk_mgmt.get("min_trend_range_pips", 0.0)  # 0 = disabled
         self.trend_lookback_minutes = risk_mgmt.get("trend_lookback_minutes", 10)

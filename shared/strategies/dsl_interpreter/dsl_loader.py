@@ -375,6 +375,11 @@ def integrate_dsl_with_strategy_registry(strategy_registry, dsl_loader: DSLLoade
                 def indicator_values(self) -> Dict[str, float]:
                     """Expose the underlying DSL strategy's indicator values."""
                     return getattr(self._dsl_strategy, 'indicator_values', {})
+                
+                @property
+                def trailing_stop(self) -> Optional[Dict[str, Any]]:
+                    """Expose the underlying DSL strategy's trailing stop configuration."""
+                    return getattr(self._dsl_strategy, 'trailing_stop', None)
             
             return DSLStrategyWrapper
         

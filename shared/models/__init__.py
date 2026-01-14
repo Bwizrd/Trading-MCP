@@ -52,6 +52,7 @@ class Trade(BaseModel):
     exit_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+    trailing_stop_level: Optional[float] = None  # Current trailing stop loss price (if active)
     result: Optional[TradeResult] = None
     pips: Optional[float] = None
     profit_loss: Optional[float] = None

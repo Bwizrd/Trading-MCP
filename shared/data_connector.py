@@ -77,7 +77,7 @@ class DataConnector:
             
             # Get symbol mapping first
             async with httpx.AsyncClient(timeout=30.0) as client:
-                symbols_response = await client.get("http://localhost:8000/symbols")
+                symbols_response = await client.get(f"{VPS_TICK_URL}/symbols")
                 symbols_data = symbols_response.json()
                 
                 # Find pair ID for symbol
@@ -177,7 +177,7 @@ class DataConnector:
                 start_iso = start_date.strftime('%Y-%m-%dT00:00:00.000Z') if isinstance(start_date, datetime) else f"{start_date}T00:00:00.000Z"
                 end_iso = end_date.strftime('%Y-%m-%dT23:59:59.000Z') if isinstance(end_date, datetime) else f"{end_date}T23:59:59.000Z"
 
-                date_url = f"http://localhost:8000/getDataByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
+                date_url = f"{VPS_TICK_URL}/getDataByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
                 logger.info(f"Fetching {timeframe} data: {date_url}")
 
                 date_response = await client.get(date_url)
@@ -190,7 +190,7 @@ class DataConnector:
                     else:
                         # Fallback to InfluxDB if date range fails
                         logger.warning("No data from date range API, trying InfluxDB fallback")
-                        influx_url = f"http://localhost:8000/getDataFromDB?pair={pair_id}&timeframe={timeframe_lower}&bars={bars}"
+                        influx_url = f"{VPS_TICK_URL}/getDataFromDB?pair={pair_id}&timeframe={timeframe_lower}&bars={bars}"
                         influx_response = await client.get(influx_url)
 
                         if influx_response.status_code == 200:
@@ -320,7 +320,7 @@ class DataConnector:
             
             # Get symbol mapping first
             async with httpx.AsyncClient(timeout=30.0) as client:
-                symbols_response = await client.get("http://localhost:8000/symbols")
+                symbols_response = await client.get(f"{VPS_TICK_URL}/symbols")
                 symbols_data = symbols_response.json()
                 
                 # Find pair ID for symbol
@@ -369,7 +369,7 @@ class DataConnector:
                 end_iso = end_date.strftime('%Y-%m-%dT%H:%M:%S.999Z') if isinstance(end_date, datetime) else f"{end_date}T23:59:59.999Z"
                 
                 # Try new InfluxDB date range API first
-                influx_date_url = f"http://localhost:8000/getDataFromDBByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
+                influx_date_url = f"{VPS_TICK_URL}/getDataFromDBByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
                 
                 influx_response = await client.get(influx_date_url)
                 if influx_response.status_code == 200:
@@ -383,7 +383,7 @@ class DataConnector:
                 else:
                     # Fallback to cTrader API if InfluxDB doesn't have the data
                     logger.warning(f"InfluxDB date range failed (status {influx_response.status_code}), falling back to cTrader API")
-                    date_url = f"http://localhost:8000/getDataByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
+                    date_url = f"{VPS_TICK_URL}/getDataByDates?pair={pair_id}&timeframe={timeframe_lower}&startDate={start_iso}&endDate={end_iso}"
                     
                     date_response = await client.get(date_url)
                     if date_response.status_code == 200:
@@ -558,7 +558,7 @@ class DataConnector:
             # Test using the existing working function
             import httpx
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get("http://localhost:8000/health")
+                response = await client.get(f"{VPS_TICK_URL}/health")
                 if response.status_code == 200:
                     return {
                         "status": "connected",

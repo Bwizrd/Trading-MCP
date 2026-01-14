@@ -380,6 +380,9 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
         # Create strategy instance
         strategy = registry.create_strategy(strategy_name, strategy_parameters)
         
+        # Get trailing stop configuration from strategy if available
+        trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+        
         # Create backtest configuration
         config = BacktestConfiguration(
             symbol=symbol,
@@ -390,7 +393,8 @@ async def handle_run_backtest(registry: StrategyRegistry, engine: UniversalBackt
             risk_per_trade=risk_per_trade,
             stop_loss_pips=stop_loss_pips,
             take_profit_pips=take_profit_pips,
-            use_tick_data=use_tick_data
+            use_tick_data=use_tick_data,
+            trailing_stop=trailing_stop_config
         )
         
         # Run backtest
@@ -577,6 +581,10 @@ async def handle_compare_strategies(registry: StrategyRegistry, engine: Universa
         try:
             # Create strategy and config
             strategy = registry.create_strategy(strategy_name)
+            
+            # Get trailing stop configuration from strategy if available
+            trailing_stop_config = getattr(strategy, 'trailing_stop', None)
+            
             config = BacktestConfiguration(
                 symbol=symbol,
                 timeframe=timeframe,
@@ -584,7 +592,8 @@ async def handle_compare_strategies(registry: StrategyRegistry, engine: Universa
                 end_date=end_date,
                 initial_balance=initial_balance,
                 stop_loss_pips=stop_loss_pips,
-                take_profit_pips=take_profit_pips
+                take_profit_pips=take_profit_pips,
+                trailing_stop=trailing_stop_config
             )
             
             # Run backtest

@@ -67,6 +67,11 @@
   "risk_management": {
     "stop_loss_pips": 8,
     "take_profit_pips": 8,
+    "trailing_stop": {
+      "enabled": true,
+      "activation_pips": 4,
+      "trail_distance_pips": 3
+    },
     "max_daily_trades": 200,
     "min_pip_distance": 0.0001,
     "execution_window_minutes": 1440,
