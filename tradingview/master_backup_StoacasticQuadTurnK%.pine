@@ -1,5 +1,5 @@
 //@version=5
-strategy("Stochastic Quad Rotation - SIMPLE", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+strategy("Stochastic Quad Rotation - Original", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
 
 // ============================================================================
 // INPUTS
@@ -107,31 +107,6 @@ if enable_safety_net
     // Exit SHORT when fast D reaches oversold (opposite rotation detected)
     if strategy.position_size < 0 and d_fast <= safety_net_oversold
         strategy.close("Short")
-
-// Only enter if not already in a position
-if buy_signal and strategy.position_size == 0
-    strategy.entry("Long", strategy.long)
-    if use_trailing
-        strategy.exit("Exit Long", "Long", stop=close - sl_distance, trail_points=trail_points, trail_offset=trail_offset)
-    else
-        strategy.exit("Exit Long", "Long", stop=close - sl_distance, limit=close + tp_distance)
-
-if sell_signal and strategy.position_size == 0
-    strategy.entry("Short", strategy.short)
-    if use_trailing
-        strategy.exit("Exit Short", "Short", stop=close + sl_distance, trail_points=trail_points, trail_offset=trail_offset)
-    else
-        strategy.exit("Exit Short", "Short", stop=close + sl_distance, limit=close - tp_distance)
-
-// Safety Net Exit - Close on opposite rotation
-if enable_safety_net
-    // Exit LONG when fast D reaches overbought (opposite rotation detected)
-    if strategy.position_size > 0 and d_fast >= safety_net_overbought
-        strategy.close("Long", comment="Safety Net")
-    
-    // Exit SHORT when fast D reaches oversold (opposite rotation detected)
-    if strategy.position_size < 0 and d_fast <= safety_net_oversold
-        strategy.close("Short", comment="Safety Net")
 
 // ============================================================================
 // PLOTTING

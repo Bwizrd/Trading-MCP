@@ -98,13 +98,15 @@ var bool exit_set = false
 
 // Only enter if not already in a position
 if buy_signal and strategy.position_size == 0
-    comment_text = "Long|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
-    strategy.entry("Long", strategy.long, comment=comment_text)
+    // Stochastic data for webhook (not shown on chart)
+    webhook_data = "Long|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
+    strategy.entry("Long", strategy.long, comment=webhook_data, alert_message=webhook_data)
     exit_set := false
 
 if sell_signal and strategy.position_size == 0
-    comment_text = "Short|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
-    strategy.entry("Short", strategy.short, comment=comment_text)
+    // Stochastic data for webhook (not shown on chart)
+    webhook_data = "Short|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
+    strategy.entry("Short", strategy.short, comment=webhook_data, alert_message=webhook_data)
     exit_set := false
 
 // Set exit orders ONCE after entry - FIXED SL/TP ONLY

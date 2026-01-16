@@ -1,0 +1,189 @@
+//@version=5
+strategy("Stochastic Quad - TRAILING STOP", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ============================================================================
+// TRAILING STOP VERSION
+// ============================================================================
+// This version implements proper trailing stops that activate after reaching
+// a profit threshold and trail the price by a specified distance.
+// ============================================================================
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+
+// Stochastic Parameters
+k1 = input.int(9, "Fast K Period")
+d1 = input.int(3, "Fast D Smoothing")
+k2 = input.int(14, "Med-Fast K Period")
+d2 = input.int(3, "Med-Fast D Smoothing")
+k3 = input.int(40, "Med-Slow K Period")
+d3 = input.int(4, "Med-Slow D Smoothing")
+k4 = input.int(60, "Slow K Period")
+d4 = input.int(10, "Slow D Smoothing")
+
+// Zone Levels
+oversold_level = input.int(20, "Oversold Level")
+overbought_level = input.int(80, "Overbought Level")
+
+// Risk Management
+stop_loss_points = input.float(8.0, "Stop Loss (Points)", tooltip="Initial stop loss before trailing activates")
+point_value = input.float(1.0, "Point Value (Tick Size)", tooltip="US500=1.0, NAS100=1.0, UK100=1.0")
+
+// Trailing Stop Settings
+enable_trailing = input.bool(true, "Enable Trailing Stop", tooltip="Use trailing stop instead of fixed TP")
+trailing_activation_points = input.float(5.0, "Trailing Activation (Points)", tooltip="Profit level to activate trailing stop")
+trailing_distance_points = input.float(3.0, "Trailing Distance (Points)", tooltip="Distance to trail behind highest/lowest price")
+
+// ============================================================================
+// STOCHASTIC CALCULATIONS
+// ============================================================================
+
+stoch(k_period, d_period) =>
+    k = ta.stoch(close, high, low, k_period)
+    d = ta.sma(k, d_period)
+    [k, d]
+
+[k_fast, d_fast] = stoch(k1, d1)
+[k_med_fast, d_med_fast] = stoch(k2, d2)
+[k_med_slow, d_med_slow] = stoch(k3, d3)
+[k_slow, d_slow] = stoch(k4, d4)
+
+// ============================================================================
+// SIGNAL LOGIC
+// ============================================================================
+
+// Check if all 4 D values were in zone on PREVIOUS bar
+all_oversold_prev = d_fast[1] < oversold_level and d_med_fast[1] < oversold_level and d_med_slow[1] < oversold_level and d_slow[1] < oversold_level
+all_overbought_prev = d_fast[1] > overbought_level and d_med_fast[1] > overbought_level and d_med_slow[1] > overbought_level and d_slow[1] > overbought_level
+
+// Detect when fast K crosses out of zone on CURRENT bar
+fast_crosses_above = ta.crossover(k_fast, oversold_level)
+fast_crosses_below = ta.crossunder(k_fast, overbought_level)
+
+// Entry signals
+buy_signal = all_oversold_prev and fast_crosses_above
+sell_signal = all_overbought_prev and fast_crosses_below
+
+// ============================================================================
+// TRAILING STOP LOGIC
+// ============================================================================
+
+// Calculate price distances
+sl_distance = stop_loss_points * point_value
+trailing_activation_distance = trailing_activation_points * point_value
+trailing_distance = trailing_distance_points * point_value
+
+// Track trailing stop state
+var float trail_stop_price = na
+var float highest_profit_price = na
+var bool trailing_active = false
+
+// Reset on new position
+if strategy.position_size == 0
+    trail_stop_price := na
+    highest_profit_price := na
+    trailing_active := false
+
+// Update trailing stop for open positions
+if strategy.position_size != 0
+    entry_price = strategy.position_avg_price
+    
+    if strategy.position_size > 0  // Long position
+        current_profit = close - entry_price
+        
+        // Check if we should activate trailing
+        if not trailing_active and current_profit >= trailing_activation_distance
+            trailing_active := true
+            highest_profit_price := close
+            trail_stop_price := close - trailing_distance
+        
+        // Update trailing stop if active
+        if trailing_active
+            if close > highest_profit_price
+                highest_profit_price := close
+                trail_stop_price := close - trailing_distance
+    
+    else  // Short position
+        current_profit = entry_price - close
+        
+        // Check if we should activate trailing
+        if not trailing_active and current_profit >= trailing_activation_distance
+            trailing_active := true
+            highest_profit_price := close
+            trail_stop_price := close + trailing_distance
+        
+        // Update trailing stop if active
+        if trailing_active
+            if close < highest_profit_price
+                highest_profit_price := close
+                trail_stop_price := close + trailing_distance
+
+// ============================================================================
+// STRATEGY EXECUTION
+// ============================================================================
+
+// Track if we've set exit orders
+var bool exit_set = false
+
+// Entry logic
+if buy_signal and strategy.position_size == 0
+    // Stochastic data for webhook (not shown on chart)
+    webhook_data = "Long|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
+    strategy.entry("Long", strategy.long, comment=webhook_data, alert_message=webhook_data)
+    exit_set := false
+
+if sell_signal and strategy.position_size == 0
+    // Stochastic data for webhook (not shown on chart)
+    webhook_data = "Short|PREV|" + str.tostring(k_fast[1], "#.#") + "|" + str.tostring(d_fast[1], "#.#") + "|" + str.tostring(k_med_fast[1], "#.#") + "|" + str.tostring(d_med_fast[1], "#.#") + "|" + str.tostring(k_med_slow[1], "#.#") + "|" + str.tostring(d_med_slow[1], "#.#") + "|" + str.tostring(k_slow[1], "#.#") + "|" + str.tostring(d_slow[1], "#.#") + "|CURR|" + str.tostring(k_fast, "#.#") + "|" + str.tostring(d_fast, "#.#") + "|" + str.tostring(k_med_fast, "#.#") + "|" + str.tostring(d_med_fast, "#.#") + "|" + str.tostring(k_med_slow, "#.#") + "|" + str.tostring(d_med_slow, "#.#") + "|" + str.tostring(k_slow, "#.#") + "|" + str.tostring(d_slow, "#.#")
+    strategy.entry("Short", strategy.short, comment=webhook_data, alert_message=webhook_data)
+    exit_set := false
+
+// Exit logic with trailing stops
+if strategy.position_size != 0 and not exit_set
+    entry_price = strategy.position_avg_price
+    
+    if enable_trailing
+        // Set initial stop loss only (no TP - trailing will handle exits)
+        if strategy.position_size > 0
+            strategy.exit("Exit Long", "Long", stop=entry_price - sl_distance, comment="Exit Long")
+        else
+            strategy.exit("Exit Short", "Short", stop=entry_price + sl_distance, comment="Exit Short")
+    else
+        // Fixed SL/TP (fallback if trailing disabled)
+        if strategy.position_size > 0
+            strategy.exit("Exit Long", "Long", stop=entry_price - sl_distance, limit=entry_price + sl_distance, comment="Exit Long")
+        else
+            strategy.exit("Exit Short", "Short", stop=entry_price + sl_distance, limit=entry_price - sl_distance, comment="Exit Short")
+    
+    exit_set := true
+
+// Manual trailing stop exit
+if enable_trailing and trailing_active and not na(trail_stop_price)
+    if strategy.position_size > 0 and close <= trail_stop_price
+        strategy.close("Long", comment="Trailing Stop")
+        trailing_active := false
+    
+    if strategy.position_size < 0 and close >= trail_stop_price
+        strategy.close("Short", comment="Trailing Stop")
+        trailing_active := false
+
+// Reset flag when position closes
+if strategy.position_size == 0
+    exit_set := false
+
+// ============================================================================
+// VISUALIZATION
+// ============================================================================
+
+// Plot trailing stop level (for debugging)
+plot(trailing_active and not na(trail_stop_price) ? trail_stop_price : na, "Trailing Stop", color=color.red, linewidth=2, style=plot.style_linebr)
+
+// Plot activation level
+activation_level_long = strategy.position_size > 0 ? strategy.position_avg_price + trailing_activation_distance : na
+activation_level_short = strategy.position_size < 0 ? strategy.position_avg_price - trailing_activation_distance : na
+plot(activation_level_long, "Activation (Long)", color=color.orange, linewidth=1, style=plot.style_linebr)
+plot(activation_level_short, "Activation (Short)", color=color.orange, linewidth=1, style=plot.style_linebr)
+
+// Background color when trailing is active
+bgcolor(trailing_active ? color.new(color.green, 90) : na, title="Trailing Active")
