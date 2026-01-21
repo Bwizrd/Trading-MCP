@@ -1,0 +1,102 @@
+# Trading Optimizer MCP Server Development Progress
+
+## Codebase Patterns
+
+### MCP Server Structure
+- All MCP servers follow pattern: `@app.list_tools()` and `@app.call_tool()`
+- Use `mcp.server.Server` class with stdio_server for communication
+- Tools return list[TextContent] with formatted output
+- Located in `mcp_servers/` directory
+- Configuration added to `mcp.json` at project root
+
+### API Integration Patterns
+- VPS API base URL: `http://localhost:8020` for tick data
+- Deals API base URL: `http://localhost:8000` for closed positions
+- Use `httpx.AsyncClient` for async HTTP requests
+- Always set reasonable timeouts (30s for API calls)
+- Handle API errors with try-catch and return user-friendly messages
+
+### Tick Data Handling
+- Endpoint: `GET /getTickDataFromDB?pair={id}&startDate={iso}&endDate={iso}&maxTicks={n}`
+- Ticks contain: timestamp (ms), bid, ask, spread
+- Calculate mid price: `(bid + ask) / 2`
+- Always sort ticks chronologically: `sorted(ticks, key=lambda t: t['timestamp'])`
+- Default maxTicks: 300000 (covers full trading day for most symbols)
+
+### Trade Simulation Logic
+- BUY direction: SL triggers if `price <= entry - sl_pips`, TP if `price >= entry + tp_pips`
+- SELL direction: SL triggers if `price >= entry + sl_pips`, TP if `price <= entry - tp_pips`
+- Use tick mid price for execution simulation
+- Track exact exit time and price from ticks
+- Return result as: TradeResult.WIN, TradeResult.LOSS, TradeResult.NONE
+
+### Trailing Stop Implementation
+- Activate when profit reaches `activation_pips`
+- Trail price by `trail_distance_pips`
+- BUY: Track highest high, exit if price drops by trail distance
+- SELL: Track lowest low, exit if price rises by trail distance
+- Never move trailing stop against profit (lock in gains)
+
+### HTML Report Generation
+- Save reports to `data/optimization_reports/` directory
+- Filename format: `{symbol}_{date}_{timestamp}.html`
+- Include: summary statistics, trade-by-trade table, visual charts
+- Use simple HTML/CSS or Jinja2 templates for generation
+- Return absolute file path for user to open in browser
+
+### Data Connector Reuse
+- Leverage existing `shared/data_connector.py` for tick data fetching
+- Use `DataConnector.get_market_data()` with `use_tick_data=True`
+- Tick-to-candle conversion already implemented
+- Symbol ID mapping available via `/symbols` endpoint
+
+### Error Handling
+- Wrap all API calls in try-catch blocks
+- Validate parameters before making calls (dates, pips, symbols)
+- Log errors to `logs/trading_optimizer.log`
+- Return `TextContent` with ❌ emoji for user-facing errors
+- Use specific exception types where possible
+
+### Logging Conventions
+- Use Python `logging` module
+- Log level: INFO for operations, DEBUG for detailed trace
+- Format: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
+- File: `logs/trading_optimizer.log` (auto-create directory)
+- Console: Also log to stderr for debugging
+
+### Testing Approach
+- Test with real endpoints: http://localhost:8020 and http://localhost:8000
+- Use recent dates (2026-01-19, 2026-01-20) for testing
+- Test symbols: US500_SB, UK100_SB (indices available in database)
+- Verify SL/TP logic with known trades
+- Test edge cases: no positions, no ticks, invalid parameters
+
+---
+
+## Development History
+
+(Agent will append progress entries here after completing each user story)
+
+---
+
+## 2026-01-20 - TM-001
+- Created base MCP server structure for Trading Optimizer
+- Implemented health_check tool to verify server status
+- Added server configuration to mcp.json
+- Created comprehensive README documentation
+
+**Files changed:**
+- mcp_servers/trading_optimizer_mcp.py (new)
+- mcp_servers/README_TRADING_OPTIMIZER.md (new)
+- mcp.json (added tradingOptimizer server)
+- agents/prd.json (marked TM-001 as passes: true)
+
+**Learnings:**
+- MCP server pattern: @app.list_tools() returns Tool objects, @app.call_tool() handles execution
+- stdio_server provides async read/write streams for MCP protocol communication
+- Health check tools are essential for verifying server connectivity and status
+- Logging should go to both file (logs/trading_optimizer.log) and stderr for debugging
+- Tool names use snake_case, descriptions should be clear and actionable
+- TextContent responses format server output for the client
+
+---

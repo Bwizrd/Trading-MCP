@@ -27,6 +27,13 @@
       "args": [
         "${workspaceFolder}/mcp_servers/modular_chart_engine.py"
       ]
+    },
+    "tradingOptimizer": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/mcp_servers/trading_optimizer_mcp.py"
+      ]
     }
   }
 }

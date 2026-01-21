@@ -1,0 +1,187 @@
+{
+  "product": "Trading Optimizer MCP Server",
+  "version": "1.0.0",
+  "updated": "2026-01-20",
+  "stories": [
+    {
+      "id": "TM-001",
+      "priority": 1,
+      "title": "Create base MCP server structure for trading optimizer",
+      "description": "As a developer, I want a new MCP server scaffold that can handle trade optimization requests so that I can build optimization features on top of it",
+      "acceptance": [
+        "New MCP server file created at mcp_servers/trading_optimizer_mcp.py",
+        "Server implements MCP protocol using @app.list_tools() and @app.call_tool()",
+        "Server can be started and connects successfully via stdio",
+        "Basic health check tool implemented to verify server is working",
+        "Server added to mcp.json configuration file",
+        "README documentation created explaining the server purpose"
+      ],
+      "passes": true,
+      "notes": "Follow pattern from universal_backtest_engine.py and other MCP servers in mcp_servers/ directory. Use mcp.server.Server class and stdio_server for communication."
+    },
+    {
+      "id": "TM-002",
+      "priority": 1,
+      "title": "Implement closed positions fetching from deals endpoint",
+      "description": "As a trader, I want to fetch my closed positions for a specific date so that I can analyze their performance with different parameters",
+      "acceptance": [
+        "Tool created: fetch_closed_positions(date) that calls GET http://localhost:8000/deals/{date}",
+        "Date parameter accepts YYYY-MM-DD format",
+        "Returns list of positions with: entry_time, entry_price, direction, symbol, exit_time, exit_price",
+        "Handles API errors gracefully with clear error messages",
+        "Validates date format before making API call",
+        "Logs successful fetches with position count"
+      ],
+      "passes": false,
+      "notes": "Endpoint returns closed positions/deals. Need to parse response and extract: entry time, direction (BUY/SELL), entry price, symbol, exit details. Use httpx for async API calls."
+    },
+    {
+      "id": "TM-003",
+      "priority": 1,
+      "title": "Implement tick data fetching for optimization",
+      "description": "As a trader, I want to fetch tick data for a specific symbol and timerange so that I can replay trades with different parameters",
+      "acceptance": [
+        "Tool created: fetch_tick_data_for_optimization(symbol, start_time, end_time)",
+        "Calls GET http://localhost:8020/getTickDataFromDB with proper parameters",
+        "Converts tick data to usable format (timestamp, bid, ask, mid)",
+        "Handles maxTicks parameter automatically (default 300000)",
+        "Returns sorted tick data chronologically",
+        "Validates timerange doesn't exceed reasonable limits"
+      ],
+      "passes": false,
+      "notes": "Reuse VPS tick data fetching logic from shared/data_connector.py. Ensure ticks are sorted by timestamp. Calculate mid price from bid/ask for execution simulation."
+    },
+    {
+      "id": "TM-004",
+      "priority": 2,
+      "title": "Implement trade replay simulation with SL/TP",
+      "description": "As a trader, I want to simulate how a trade would have performed with specific SL/TP settings so that I can evaluate parameter effectiveness",
+      "acceptance": [
+        "Function created: simulate_trade(entry_time, entry_price, direction, ticks, sl_pips, tp_pips)",
+        "Loops through ticks chronologically from entry time",
+        "Detects when SL is hit (price moves against position by sl_pips)",
+        "Detects when TP is hit (price moves in favor by tp_pips)",
+        "Returns: exit_time, exit_price, result (WIN/LOSS/NONE), pips gained/lost",
+        "Handles both BUY and SELL directions correctly"
+      ],
+      "passes": false,
+      "notes": "For BUY: SL triggers if price <= entry - sl_pips, TP if price >= entry + tp_pips. For SELL: reverse logic. Use tick mid price for execution. Track exact exit time and price."
+    },
+    {
+      "id": "TM-005",
+      "priority": 2,
+      "title": "Implement timerange filtering for positions and ticks",
+      "description": "As a trader, I want to filter positions and tick data to a specific timerange so that I only analyze trades during my desired period",
+      "acceptance": [
+        "Function created: filter_positions_by_timerange(positions, start_time, end_time)",
+        "Function created: filter_ticks_by_timerange(ticks, start_time, end_time)",
+        "Both functions accept datetime objects or ISO format strings",
+        "Filters are inclusive of start_time and end_time",
+        "Returns filtered lists maintaining original order",
+        "Logs count of filtered vs original items"
+      ],
+      "passes": false,
+      "notes": "Essential for focusing analysis on specific trading sessions (e.g., London open, NY session). Use datetime comparisons. Handle timezone-aware timestamps if present."
+    },
+    {
+      "id": "TM-006",
+      "priority": 3,
+      "title": "Create single SL/TP optimization tool with HTML report",
+      "description": "As a trader, I want to test a specific SL/TP combination on all my trades and get an HTML report so that I can evaluate that parameter set",
+      "acceptance": [
+        "Tool created: optimize_trades_single(date, symbol, sl_pips, tp_pips, start_time, end_time)",
+        "Fetches positions for the date and symbol",
+        "Fetches tick data for the timerange",
+        "Filters both to specified timerange",
+        "Simulates each trade with given SL/TP",
+        "Generates HTML report with: total trades, win rate, total pips, best/worst trades",
+        "Saves report to data/optimization_reports/ with timestamp",
+        "Returns report file path"
+      ],
+      "passes": false,
+      "notes": "This is the first complete user-facing tool. HTML report should show trade-by-trade results in a table. Use simple HTML template or Jinja2. Include summary statistics at top."
+    },
+    {
+      "id": "TM-007",
+      "priority": 3,
+      "title": "Create bulk SL/TP optimization scanner",
+      "description": "As a trader, I want to test multiple SL/TP combinations automatically so that I can find the optimal parameters for my trading style",
+      "acceptance": [
+        "Tool created: optimize_trades_bulk(date, symbol, sl_range, tp_range, start_time, end_time)",
+        "Accepts ranges like 'sl_range': [10, 15, 20, 25, 30], 'tp_range': [20, 30, 40, 50]",
+        "Tests all combinations of SL/TP pairs",
+        "Ranks results by: total pips, win rate, profit factor",
+        "Generates comprehensive HTML report showing all combinations",
+        "Highlights top 5 parameter combinations",
+        "Shows heatmap visualization of results (optional but nice)",
+        "Saves report with clear filename indicating date and symbol"
+      ],
+      "passes": false,
+      "notes": "This will be computationally intensive. Consider adding progress logging. HTML report needs table sorting capability. Could use Plotly for heatmap visualization."
+    },
+    {
+      "id": "TM-008",
+      "priority": 4,
+      "title": "Add trailing stop support to trade simulation",
+      "description": "As a trader, I want to simulate trades with trailing stops so that I can evaluate dynamic exit strategies",
+      "acceptance": [
+        "Extend simulate_trade() to accept trailing_stop config: {activation_pips, trail_distance_pips}",
+        "Trailing stop activates when trade is in profit by activation_pips",
+        "Trailing stop follows price maintaining trail_distance_pips",
+        "Trailing stop never moves against profit (lock in gains)",
+        "Returns: exit_type (TP/SL/TRAILING_STOP), final trailing stop level",
+        "Works correctly for both BUY and SELL directions"
+      ],
+      "passes": false,
+      "notes": "Trailing stop logic: Track highest high (BUY) or lowest low (SELL) after activation. Exit if price retraces by trail_distance_pips. Complex but powerful feature."
+    },
+    {
+      "id": "TM-009",
+      "priority": 4,
+      "title": "Extend optimization tools with trailing stop testing",
+      "description": "As a trader, I want to optimize trailing stop parameters alongside SL/TP so that I can find the best overall exit strategy",
+      "acceptance": [
+        "Update optimize_trades_single() to accept trailing_stop parameters",
+        "Update optimize_trades_bulk() to test trailing stop combinations",
+        "Bulk optimization tests: SL + TP + Activation + Trail Distance",
+        "HTML reports clearly show trailing stop settings for each result",
+        "Reports distinguish between static TP exits and trailing stop exits",
+        "Performance comparison: with vs without trailing stops"
+      ],
+      "passes": false,
+      "notes": "Build on TM-008. May need to limit combination explosion (e.g., test trailing stops separately or use smart defaults). Report should explain trailing stop behavior."
+    },
+    {
+      "id": "TM-010",
+      "priority": 4,
+      "title": "Add comprehensive error handling and validation",
+      "description": "As a developer, I want robust error handling throughout the optimizer so that users get clear feedback when something goes wrong",
+      "acceptance": [
+        "All API calls wrapped in try-catch with specific error messages",
+        "Parameter validation: date formats, timeranges, pip values, symbols",
+        "Graceful handling of missing data (no positions, no ticks)",
+        "Clear error messages in MCP tool responses",
+        "Logging of all errors to logs/trading_optimizer.log",
+        "User-friendly error messages (not just stack traces)"
+      ],
+      "passes": false,
+      "notes": "Error handling is critical for user experience. Follow patterns from other MCP servers. Use logging module for debug info, return TextContent with ❌ for user-facing errors."
+    },
+    {
+      "id": "TM-011",
+      "priority": 5,
+      "title": "Create comprehensive documentation and examples",
+      "description": "As a user, I want clear documentation on how to use the trading optimizer so that I can leverage all its features",
+      "acceptance": [
+        "README.md created in mcp_servers/trading_optimizer/ directory",
+        "Documentation includes: overview, installation, usage examples, tool descriptions",
+        "Example workflows documented: single optimization, bulk optimization, trailing stops",
+        "Sample HTML report screenshots included",
+        "Troubleshooting section for common issues",
+        "API endpoint requirements documented"
+      ],
+      "passes": false,
+      "notes": "Good documentation is essential. Include real examples with actual dates/symbols. Explain what each pip value means. Show example HTML report structure."
+    }
+  ]
+}
