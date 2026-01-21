@@ -48,7 +48,7 @@
         "Returns sorted tick data chronologically",
         "Validates timerange doesn't exceed reasonable limits"
       ],
-      "passes": false,
+      "passes": true,
       "notes": "Reuse VPS tick data fetching logic from shared/data_connector.py. Ensure ticks are sorted by timestamp. Calculate mid price from bid/ask for execution simulation."
     },
     {

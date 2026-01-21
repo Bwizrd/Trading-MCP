@@ -78,6 +78,34 @@ async def list_tools() -> list[Tool]:
                 "required": ["date"],
                 "additionalProperties": False
             }
+        ),
+        Tool(
+            name="fetch_tick_data_for_optimization",
+            description="Fetch tick-level market data for a specific symbol and time range. Returns bid/ask tick data sorted chronologically with mid prices calculated. Use this to get precision data for replaying trades with different SL/TP parameters.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Trading symbol (e.g., 'US500_SB', 'UK100_SB', 'EURUSD')"
+                    },
+                    "start_time": {
+                        "type": "string",
+                        "description": "Start time in ISO format (e.g., '2026-01-20T09:00:00')"
+                    },
+                    "end_time": {
+                        "type": "string",
+                        "description": "End time in ISO format (e.g., '2026-01-20T17:00:00')"
+                    },
+                    "max_ticks": {
+                        "type": "integer",
+                        "description": "Maximum number of ticks to fetch (default: 300000)",
+                        "default": 300000
+                    }
+                },
+                "required": ["symbol", "start_time", "end_time"],
+                "additionalProperties": False
+            }
         )
     ]
 
@@ -92,6 +120,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await handle_health_check()
         elif name == "fetch_closed_positions":
             return await handle_fetch_closed_positions(arguments)
+        elif name == "fetch_tick_data_for_optimization":
+            return await handle_fetch_tick_data(arguments)
         else:
             return [TextContent(
                 type="text",
@@ -117,10 +147,10 @@ async def handle_health_check() -> list[TextContent]:
     result_text += "## Available Capabilities\n\n"
     result_text += "### Current Features:\n"
     result_text += "• ✅ Health check and status verification\n"
-    result_text += "• ✅ Fetch closed positions from deals endpoint\n\n"
+    result_text += "• ✅ Fetch closed positions from deals endpoint\n"
+    result_text += "• ✅ Fetch tick data for optimization\n\n"
     
     result_text += "### Planned Features:\n"
-    result_text += "• 🔄 Load tick data for trade replay\n"
     result_text += "• 🔄 Simulate trades with different SL/TP\n"
     result_text += "• 🔄 Generate HTML optimization reports\n"
     result_text += "• 🔄 Bulk parameter scanning\n"
@@ -253,6 +283,186 @@ async def handle_fetch_closed_positions(arguments: dict) -> list[TextContent]:
     except Exception as e:
         error_msg = f"❌ Failed to fetch closed positions: {str(e)}\n"
         error_msg += f"Endpoint: {api_url}\n"
+        logger.error(error_msg, exc_info=True)
+        return [TextContent(type="text", text=error_msg)]
+
+
+async def handle_fetch_tick_data(arguments: dict) -> list[TextContent]:
+    """
+    Fetch tick-level market data for trade simulation and optimization.
+    
+    Args:
+        arguments: Dict with 'symbol', 'start_time', 'end_time', optional 'max_ticks'
+        
+    Returns:
+        List of TextContent with tick data summary
+    """
+    symbol = arguments.get("symbol", "")
+    start_time_str = arguments.get("start_time", "")
+    end_time_str = arguments.get("end_time", "")
+    max_ticks = arguments.get("max_ticks", 300000)
+    
+    # Validate inputs
+    try:
+        start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+        end_time = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+        logger.info(f"Fetching tick data for {symbol} from {start_time} to {end_time}")
+    except ValueError as e:
+        error_msg = f"❌ Invalid time format: {str(e)}\n"
+        error_msg += "Expected ISO format: 'YYYY-MM-DDTHH:MM:SS' (e.g., '2026-01-20T09:00:00')"
+        logger.error(error_msg)
+        return [TextContent(type="text", text=error_msg)]
+    
+    # Validate time range (max 24 hours to prevent excessive data)
+    time_diff = (end_time - start_time).total_seconds() / 3600  # hours
+    if time_diff > 24:
+        error_msg = f"❌ Time range too large: {time_diff:.1f} hours (max 24 hours)\n"
+        error_msg += "Split your request into smaller time ranges to avoid excessive data."
+        logger.error(error_msg)
+        return [TextContent(type="text", text=error_msg)]
+    
+    if time_diff <= 0:
+        error_msg = f"❌ Invalid time range: end_time must be after start_time"
+        logger.error(error_msg)
+        return [TextContent(type="text", text=error_msg)]
+    
+    # Get VPS endpoint and fetch symbols for pair ID mapping
+    vps_url = "http://localhost:8020"
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Get symbol mapping
+            symbols_response = await client.get(f"{vps_url}/symbols")
+            symbols_response.raise_for_status()
+            symbols_data = symbols_response.json()
+            
+            # Find pair ID for symbol
+            pair_id = None
+            symbols_list = symbols_data.get('symbols', [])
+            base_symbol = symbol.replace('_SB', '')  # Remove _SB suffix if present
+            
+            for sym in symbols_list:
+                sym_name = sym.get('name', '')
+                # Check both exact match and with/without _SB suffix
+                if sym_name == symbol or sym_name == base_symbol or sym_name == f"{base_symbol}_SB":
+                    pair_id = sym.get('value')
+                    logger.info(f"Found pair ID {pair_id} for symbol {symbol} (matched: {sym_name})")
+                    break
+            
+            if not pair_id:
+                error_msg = f"❌ Symbol not found: {symbol}\n"
+                error_msg += f"Tried variations: {symbol}, {base_symbol}, {base_symbol}_SB\n"
+                error_msg += f"Available symbols: {len(symbols_list)}"
+                logger.error(error_msg)
+                return [TextContent(type="text", text=error_msg)]
+            
+            # Format timestamps for API
+            start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            end_iso = end_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            
+            # Fetch tick data
+            tick_url = f"{vps_url}/getTickDataFromDB?pair={pair_id}&startDate={start_iso}&endDate={end_iso}&maxTicks={max_ticks}"
+            logger.info(f"Fetching ticks: {tick_url}")
+            
+            tick_response = await client.get(tick_url)
+            tick_response.raise_for_status()
+            tick_data = tick_response.json()
+            
+            # Parse tick data
+            ticks_raw = tick_data.get('data', [])
+            if not ticks_raw:
+                result_text = f"ℹ️ **No Tick Data Found**\n\n"
+                result_text += f"**Symbol:** {symbol} (Pair ID: {pair_id})\n"
+                result_text += f"**Time Range:** {start_time_str} to {end_time_str}\n"
+                result_text += f"**Duration:** {time_diff:.1f} hours\n\n"
+                result_text += "No ticks available for this time range. Check if market was open."
+                return [TextContent(type="text", text=result_text)]
+            
+            # Convert and sort ticks
+            ticks_parsed = []
+            for tick in ticks_raw:
+                try:
+                    # Parse timestamp (milliseconds since epoch)
+                    ts_ms = tick.get('timestamp', 0)
+                    ts = datetime.fromtimestamp(ts_ms / 1000) if ts_ms else None
+                    
+                    bid = float(tick.get('bid', 0))
+                    ask = float(tick.get('ask', 0))
+                    mid = (bid + ask) / 2 if bid and ask else 0
+                    
+                    if ts and bid and ask:
+                        ticks_parsed.append({
+                            'timestamp': ts,
+                            'timestamp_ms': ts_ms,
+                            'bid': bid,
+                            'ask': ask,
+                            'mid': mid
+                        })
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Skipping invalid tick: {e}")
+                    continue
+            
+            # Sort chronologically
+            ticks_parsed.sort(key=lambda t: t['timestamp_ms'])
+            
+            logger.info(f"✅ Parsed and sorted {len(ticks_parsed)} ticks")
+            
+            # Calculate statistics
+            if ticks_parsed:
+                first_tick = ticks_parsed[0]
+                last_tick = ticks_parsed[-1]
+                duration_minutes = (last_tick['timestamp'] - first_tick['timestamp']).total_seconds() / 60
+                ticks_per_minute = len(ticks_parsed) / duration_minutes if duration_minutes > 0 else 0
+                
+                mid_prices = [t['mid'] for t in ticks_parsed]
+                price_min = min(mid_prices)
+                price_max = max(mid_prices)
+                price_range = price_max - price_min
+                
+                result_text = f"✅ **Tick Data Fetched Successfully**\n\n"
+                result_text += f"**Symbol:** {symbol} (Pair ID: {pair_id})\n"
+                result_text += f"**Time Range:** {first_tick['timestamp']} to {last_tick['timestamp']}\n"
+                result_text += f"**Total Ticks:** {len(ticks_parsed):,}\n"
+                result_text += f"**Duration:** {duration_minutes:.1f} minutes\n"
+                result_text += f"**Avg Ticks/Min:** {ticks_per_minute:.1f}\n\n"
+                
+                result_text += "## Price Statistics\n\n"
+                result_text += f"- **Min Mid Price:** {price_min:.2f}\n"
+                result_text += f"- **Max Mid Price:** {price_max:.2f}\n"
+                result_text += f"- **Price Range:** {price_range:.2f} ({price_range * 10:.0f} pips)\n"
+                result_text += f"- **First Mid:** {first_tick['mid']:.2f}\n"
+                result_text += f"- **Last Mid:** {last_tick['mid']:.2f}\n\n"
+                
+                result_text += "## Sample Ticks (First 5)\n\n"
+                for i, tick in enumerate(ticks_parsed[:5], 1):
+                    result_text += f"{i}. **{tick['timestamp'].strftime('%H:%M:%S')}** - "
+                    result_text += f"Bid: {tick['bid']:.2f}, Ask: {tick['ask']:.2f}, Mid: {tick['mid']:.2f}\n"
+                
+                result_text += f"\n📊 **Data Ready:** {len(ticks_parsed):,} ticks sorted chronologically"
+                
+                return [TextContent(type="text", text=result_text)]
+            else:
+                result_text = f"⚠️ **No Valid Ticks Parsed**\n\n"
+                result_text += f"Received {len(ticks_raw)} raw ticks but none were valid.\n"
+                result_text += "Check data format from API endpoint."
+                return [TextContent(type="text", text=result_text)]
+            
+    except httpx.TimeoutException:
+        error_msg = f"❌ Timeout: Tick data API did not respond within 60 seconds\n"
+        error_msg += f"Endpoint: {vps_url}/getTickDataFromDB\n"
+        error_msg += f"Requested: {max_ticks:,} ticks for {time_diff:.1f} hours\n"
+        error_msg += "Try reducing the time range or max_ticks parameter."
+        logger.error(error_msg)
+        return [TextContent(type="text", text=error_msg)]
+        
+    except httpx.HTTPStatusError as e:
+        error_msg = f"❌ HTTP Error {e.response.status_code}: {e.response.text[:200]}\n"
+        error_msg += f"Endpoint: {vps_url}/getTickDataFromDB\n"
+        logger.error(error_msg)
+        return [TextContent(type="text", text=error_msg)]
+        
+    except Exception as e:
+        error_msg = f"❌ Failed to fetch tick data: {str(e)}\n"
         logger.error(error_msg, exc_info=True)
         return [TextContent(type="text", text=error_msg)]
 

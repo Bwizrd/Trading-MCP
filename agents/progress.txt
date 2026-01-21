@@ -126,3 +126,34 @@
 - Show first 10 positions in output, indicate if more exist
 
 ---
+
+## 2026-01-21 - TM-003
+- Implemented fetch_tick_data_for_optimization tool in Trading Optimizer
+- Fetches tick-level bid/ask data from VPS endpoint (localhost:8020/getTickDataFromDB)
+- Maps symbol names to pair IDs using /symbols endpoint
+- Handles symbol variations (_SB suffix matching)
+- Validates time range (max 24 hours to prevent excessive data)
+- Validates start_time must be before end_time
+- Parses tick data with timestamp (ms), bid, ask, calculates mid price
+- Sorts ticks chronologically by timestamp
+- Returns statistics: total ticks, duration, ticks/min, price range in pips
+- Shows first 5 sample ticks with formatted timestamps
+- Handles API errors: timeout (60s), HTTP errors, connection failures
+- ISO time format: 'YYYY-MM-DDTHH:MM:SS' (e.g., '2026-01-20T09:00:00')
+
+**Files changed:**
+- mcp_servers/trading_optimizer_mcp.py (added fetch_tick_data_for_optimization)
+- agents/prd.json (marked TM-003 as passes: true)
+
+**Learnings:**
+- VPS tick endpoint: GET /getTickDataFromDB?pair={id}&startDate={iso}&endDate={iso}&maxTicks={n}
+- Symbol mapping required: /symbols returns list with name and value (pair ID)
+- Symbol variations: check exact, without _SB, and with _SB suffix
+- Timestamps in milliseconds, divide by 1000 for datetime conversion
+- Mid price = (bid + ask) / 2 for execution simulation
+- Limit time range to 24 hours: US500 ~110 ticks/min = ~158k ticks/day
+- Sort ticks after parsing to ensure chronological order
+- Duration in minutes: (last_ts - first_ts).total_seconds() / 60
+- Price range in pips: multiply by 10 for US500 (0.1 = 1 pip)
+
+---
