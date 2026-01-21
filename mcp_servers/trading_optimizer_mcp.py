@@ -1047,6 +1047,12 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
             total_trades = len(results)
             win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
             
+            # Calculate average win/loss
+            win_pips = [r['pips_gained'] for r in results if r['result'] == 'WIN']
+            loss_pips = [r['pips_gained'] for r in results if r['result'] == 'LOSS']
+            avg_win = sum(win_pips) / len(win_pips) if win_pips else 0
+            avg_loss = sum(loss_pips) / len(loss_pips) if loss_pips else 0
+            
             # Generate HTML report
             report_dir = Path(__file__).parent.parent / "data" / "optimization_reports"
             report_dir.mkdir(parents=True, exist_ok=True)
