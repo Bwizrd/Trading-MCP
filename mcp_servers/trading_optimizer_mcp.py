@@ -641,7 +641,8 @@ def filter_positions_by_timerange(
     end_time: datetime
 ) -> List[Dict[str, Any]]:
     """
-    Filter positions to those with exit times within the specified timerange.
+    Filter positions to those from the specified date.
+    For a full day (00:00 to 23:59), this returns all positions that closed on that date.
     
     Args:
         positions: List of position dicts with 'exitTime' or 'exitTimestamp'
@@ -667,11 +668,11 @@ def filter_positions_by_timerange(
         else:
             continue
         
-        # Filter by timerange (inclusive)
-        if start_time <= exit_time <= end_time:
+        # Check if exit time is on the same date
+        if exit_time.date() == start_time.date():
             filtered.append(pos)
     
-    logger.info(f"Filtered positions: {len(filtered)}/{len(positions)} within timerange")
+    logger.info(f"Filtered positions: {len(filtered)}/{len(positions)} from date {start_time.date()}")
     return filtered
 
 
@@ -841,14 +842,20 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
     date_str = arguments.get("date", "")
     sl_pips = arguments.get("sl_pips", 10)
     tp_pips = arguments.get("tp_pips", 15)
-    start_time_str = arguments.get("start_time", "00:00:00")
-    end_time_str = arguments.get("end_time", "23:59:59")
+    start_time_str = arguments.get("start_time")
+    end_time_str = arguments.get("end_time")
     
     # Validate date
     try:
         trade_date = datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError:
         return [TextContent(type="text", text=f"❌ Invalid date format: '{date_str}'. Expected YYYY-MM-DD")]
+    
+    # If no time range specified, use full day
+    if not start_time_str:
+        start_time_str = "00:00:00"
+    if not end_time_str:
+        end_time_str = "23:59:59"
     
     # Parse time range
     try:
@@ -911,11 +918,17 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
             
             # Step 2: Map symbol IDs to names and fetch tick data
             symbol_map = {
-                205: "US500_SB",  # US500
-                219: "UK100_SB",  # UK100
-                217: "DE40_SB",   # DE40
-                220: "US30_SB",   # US30
-                241: "AUS200_SB"  # AUS200
+                205: "NAS100_SB",   # Nasdaq 100
+                220: "US500_SB",    # S&P 500
+                217: "UK100_SB",    # FTSE 100
+                200: "GER40_SB",    # Germany 40 (DAX)
+                219: "US30_SB",     # Dow 30
+                238: "XAGUSD_SB",   # Silver
+                201: "HK50_SB",     # Hong Kong 50
+                241: "XAUUSD_SB",   # Gold
+                188: "FRA40_SB",    # France 40
+                160: "BTCUSD",      # Bitcoin
+                170: "ETHUSD"       # Ethereum
             }
             
             # Get unique symbols and fetch tick data for the full day
@@ -1019,17 +1032,29 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
                     pip_value=0.1
                 )
                 
+                # Calculate original pips
+                # For all symbols: 1 point = 1 pip (direct price difference)
+                # Note: Broker may display Gold pips differently but we use actual price movement
+                if pos['direction'] == 'BUY':
+                    original_pips = pos['exitPrice'] - pos['entryPrice']
+                else:  # SELL
+                    original_pips = pos['entryPrice'] - pos['exitPrice']
+                
                 simulated_result = {
                     'dealId': pos['dealId'],
                     'symbol': symbol_name,
                     'direction': pos['direction'],
                     'entryPrice': pos['entryPrice'],
+                    'entryTime': entry_time,
                     'exitTime': sim_result['exit_time'],
                     'exitPrice': sim_result['exit_price'],
                     'result': sim_result['result'],
                     'pips_gained': sim_result['pips_gained'],
                     'exit_reason': sim_result['exit_reason'],
-                    'ticks_processed': sim_result['ticks_processed']
+                    'ticks_processed': sim_result['ticks_processed'],
+                    'original_exit_time': pos['exitTime'],
+                    'original_exit_price': pos['exitPrice'],
+                    'original_pips': original_pips
                 }
                 
                 results.append(simulated_result)
@@ -1047,11 +1072,21 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
             total_trades = len(results)
             win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
             
-            # Calculate average win/loss
+            # Calculate average win/loss for optimized results
             win_pips = [r['pips_gained'] for r in results if r['result'] == 'WIN']
             loss_pips = [r['pips_gained'] for r in results if r['result'] == 'LOSS']
             avg_win = sum(win_pips) / len(win_pips) if win_pips else 0
             avg_loss = sum(loss_pips) / len(loss_pips) if loss_pips else 0
+            
+            # Calculate original trade statistics
+            original_total_pips = sum(r['original_pips'] for r in results)
+            original_wins = len([r for r in results if r['original_pips'] > 0])
+            original_losses = len([r for r in results if r['original_pips'] < 0])
+            original_win_rate = (original_wins / total_trades * 100) if total_trades > 0 else 0
+            original_win_pips = [r['original_pips'] for r in results if r['original_pips'] > 0]
+            original_loss_pips = [r['original_pips'] for r in results if r['original_pips'] < 0]
+            original_avg_win = sum(original_win_pips) / len(original_win_pips) if original_win_pips else 0
+            original_avg_loss = sum(original_loss_pips) / len(original_loss_pips) if original_loss_pips else 0
             
             # Generate HTML report
             report_dir = Path(__file__).parent.parent / "data" / "optimization_reports"
@@ -1079,25 +1114,46 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
         th {{ background: #4CAF50; color: white; padding: 12px; text-align: left; }}
         td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
         tr:hover {{ background: #f5f5f5; }}
+        .copy-btn {{ background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0; font-size: 14px; }}
+        .copy-btn:hover {{ background: #45a049; }}
+        .copy-btn:active {{ background: #3d8b40; }}
+        .copied {{ background: #2196F3 !important; }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Trade Optimization Report</h1>
         
+        <h2 style="color: #666; font-size: 18px; margin: 20px 0 10px 0;">Original Results</h2>
         <div class="summary">
             <div class="stat-box">
                 <div class="stat-label">Date</div>
                 <div class="stat-value">{date_str}</div>
             </div>
             <div class="stat-box">
-                <div class="stat-label">SL / TP</div>
-                <div class="stat-value">{sl_pips} / {tp_pips} pips</div>
-            </div>
-            <div class="stat-box">
                 <div class="stat-label">Total Trades</div>
                 <div class="stat-value">{total_trades}</div>
             </div>
+            <div class="stat-box">
+                <div class="stat-label">Win Rate</div>
+                <div class="stat-value {('win' if original_win_rate >= 50 else 'loss')}">{original_win_rate:.1f}%</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total Pips</div>
+                <div class="stat-value {('win' if original_total_pips >= 0 else 'loss')}">{original_total_pips:+.1f}</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Avg Win</div>
+                <div class="stat-value win">{original_avg_win:+.1f} pips</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Avg Loss</div>
+                <div class="stat-value loss">{original_avg_loss:.1f} pips</div>
+            </div>
+        </div>
+        
+        <h2 style="color: #666; font-size: 18px; margin: 30px 0 10px 0;">Optimized Results (SL={sl_pips}, TP={tp_pips})</h2>
+        <div class="summary">
             <div class="stat-box">
                 <div class="stat-label">Win Rate</div>
                 <div class="stat-value {('win' if win_rate >= 50 else 'loss')}">{win_rate:.1f}%</div>
@@ -1114,39 +1170,65 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
                 <div class="stat-label">Avg Loss</div>
                 <div class="stat-value loss">{avg_loss:.1f} pips</div>
             </div>
+            <div class="stat-box" style="border-left: 4px solid {'#4CAF50' if total_pips > original_total_pips else '#f44336'};">
+                <div class="stat-label">Improvement</div>
+                <div class="stat-value {('win' if total_pips > original_total_pips else 'loss')}">{(total_pips - original_total_pips):+.1f} pips</div>
+            </div>
         </div>
         
         <h2>Trade Details</h2>
-        <table>
+        <p style="color: #666; margin-bottom: 10px;">Comparing <strong>Original</strong> closed positions vs <strong>Optimized</strong> SL/TP results</p>
+        <button class="copy-btn" onclick="copyTableToClipboard()">Copy Table to Clipboard</button>
+        <table id="tradesTable">
             <thead>
                 <tr>
                     <th>Deal ID</th>
                     <th>Symbol</th>
                     <th>Direction</th>
-                    <th>Entry</th>
-                    <th>Exit</th>
-                    <th>Result</th>
-                    <th>Pips</th>
-                    <th>Exit Reason</th>
+                    <th>Entry Price</th>
+                    <th>Entry Time</th>
+                    <th colspan="3">Original Close</th>
+                    <th colspan="3">Optimized Close</th>
                     <th>Ticks</th>
+                </tr>
+                <tr style="background: #e8e8e8; font-size: 12px;">
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th>Time</th>
+                    <th>Price</th>
+                    <th>Pips</th>
+                    <th>Time</th>
+                    <th>Price</th>
+                    <th>Pips/Reason</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
 """
             
-            for r in results[:50]:  # Show first 50 trades
+            for r in results:  # Show ALL trades, not just first 50
                 result_class = "win" if r['result'] == 'WIN' else "loss"
+                orig_class = "win" if r['original_pips'] > 0 else "loss"
                 exit_price_str = f"{r['exitPrice']:.2f}" if r['exitPrice'] else "N/A"
+                entry_time_str = r['entryTime'].strftime("%H:%M:%S")
+                orig_exit_time_str = r['original_exit_time'].strftime("%H:%M:%S")
+                opt_exit_time_str = r['exitTime'].strftime("%H:%M:%S") if r['exitTime'] else "N/A"
                 html_content += f"""
                 <tr>
                     <td>{r['dealId']}</td>
                     <td>{r['symbol']}</td>
                     <td>{r['direction']}</td>
                     <td>{r['entryPrice']:.2f}</td>
+                    <td>{entry_time_str}</td>
+                    <td>{orig_exit_time_str}</td>
+                    <td>{r['original_exit_price']:.2f}</td>
+                    <td class="{orig_class}">{r['original_pips']:+.1f}</td>
+                    <td>{opt_exit_time_str}</td>
                     <td>{exit_price_str}</td>
-                    <td class="{result_class}">{r['result']}</td>
-                    <td class="{result_class}">{r['pips_gained']:+.1f}</td>
-                    <td>{r['exit_reason']}</td>
+                    <td class="{result_class}">{r['pips_gained']:+.1f} / {r['exit_reason']}</td>
                     <td>{r['ticks_processed']}</td>
                 </tr>
 """
@@ -1161,6 +1243,36 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
     </div>
 </body>
 </html>
+"""
+            
+            # Add JavaScript for copy functionality
+            html_content += r"""
+<script>
+function copyTableToClipboard() {
+    const table = document.getElementById('tradesTable');
+    const rows = table.querySelectorAll('tr');
+    let text = '';
+    
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        const rowData = Array.from(cells).map(cell => cell.textContent.trim()).join('\t');
+        text += rowData + '\n';
+    });
+    
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        alert('Failed to copy: ' + err);
+    });
+}
+</script>
 """
             
             # Save HTML report
