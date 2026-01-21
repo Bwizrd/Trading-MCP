@@ -100,3 +100,29 @@
 - TextContent responses format server output for the client
 
 ---
+
+## 2026-01-21 - TM-002
+- Implemented fetch_closed_positions tool in Trading Optimizer MCP server
+- Added httpx library for async HTTP requests to deals endpoint
+- Parses deal data to extract closed positions with entry/exit details
+- Filters out entry-only deals, returns only completed trades
+- Calculates statistics: win rate, total P/L, winning/losing trade counts
+- Validates date format (YYYY-MM-DD) with clear error messages
+- Handles API errors: timeout (30s), HTTP status errors, connection failures
+
+**Files changed:**
+- mcp_servers/trading_optimizer_mcp.py (added fetch_closed_positions)
+- requirements.txt (already had httpx>=0.25.0)
+- agents/prd.json (marked TM-002 as passes: true)
+
+**Learnings:**
+- Deals API returns ALL deals including entry and exit separately
+- Only deals with "closePositionDetail" are complete trades (exits)
+- tradeSide: 1=SELL, 2=BUY (reverse of intuition)
+- executionTimestamp is in milliseconds, need to divide by 1000 for datetime
+- Position details: entryPrice in closePositionDetail, exitPrice in main deal
+- httpx.AsyncClient with timeout prevents hanging on API failures
+- Format error messages with endpoint URL for debugging
+- Show first 10 positions in output, indicate if more exist
+
+---

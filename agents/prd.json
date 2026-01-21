@@ -32,7 +32,7 @@
         "Validates date format before making API call",
         "Logs successful fetches with position count"
       ],
-      "passes": false,
+      "passes": true,
       "notes": "Endpoint returns closed positions/deals. Need to parse response and extract: entry time, direction (BUY/SELL), entry price, symbol, exit details. Use httpx for async API calls."
     },
     {
