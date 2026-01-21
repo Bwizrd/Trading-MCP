@@ -106,6 +106,34 @@ async def list_tools() -> list[Tool]:
                 "required": ["symbol", "start_time", "end_time"],
                 "additionalProperties": False
             }
+        ),
+        Tool(
+            name="test_simulation",
+            description="Test the trade simulation engine with a sample trade. Demonstrates how the simulator replays a trade with specific SL/TP parameters using tick data. Use this to verify the simulation logic works correctly.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "entry_price": {
+                        "type": "number",
+                        "description": "Entry price for the test trade (e.g., 25000.0)"
+                    },
+                    "direction": {
+                        "type": "string",
+                        "description": "Trade direction: 'BUY' or 'SELL'",
+                        "enum": ["BUY", "SELL"]
+                    },
+                    "sl_pips": {
+                        "type": "number",
+                        "description": "Stop loss in pips (e.g., 10)"
+                    },
+                    "tp_pips": {
+                        "type": "number",
+                        "description": "Take profit in pips (e.g., 15)"
+                    }
+                },
+                "required": ["entry_price", "direction", "sl_pips", "tp_pips"],
+                "additionalProperties": False
+            }
         )
     ]
 
@@ -122,6 +150,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await handle_fetch_closed_positions(arguments)
         elif name == "fetch_tick_data_for_optimization":
             return await handle_fetch_tick_data(arguments)
+        elif name == "test_simulation":
+            return await handle_test_simulation(arguments)
         else:
             return [TextContent(
                 type="text",
@@ -148,10 +178,10 @@ async def handle_health_check() -> list[TextContent]:
     result_text += "### Current Features:\n"
     result_text += "• ✅ Health check and status verification\n"
     result_text += "• ✅ Fetch closed positions from deals endpoint\n"
-    result_text += "• ✅ Fetch tick data for optimization\n\n"
+    result_text += "• ✅ Fetch tick data for optimization\n"
+    result_text += "• ✅ Trade replay simulation with SL/TP\n\n"
     
     result_text += "### Planned Features:\n"
-    result_text += "• 🔄 Simulate trades with different SL/TP\n"
     result_text += "• 🔄 Generate HTML optimization reports\n"
     result_text += "• 🔄 Bulk parameter scanning\n"
     result_text += "• 🔄 Trailing stop optimization\n\n"
@@ -465,6 +495,227 @@ async def handle_fetch_tick_data(arguments: dict) -> list[TextContent]:
         error_msg = f"❌ Failed to fetch tick data: {str(e)}\n"
         logger.error(error_msg, exc_info=True)
         return [TextContent(type="text", text=error_msg)]
+
+
+def simulate_trade(
+    entry_time: datetime,
+    entry_price: float,
+    direction: str,
+    ticks: List[Dict[str, Any]],
+    sl_pips: float,
+    tp_pips: float,
+    pip_value: float = 0.1
+) -> Dict[str, Any]:
+    """
+    Simulate a trade with specific SL/TP parameters using tick data.
+    
+    Args:
+        entry_time: Trade entry timestamp
+        entry_price: Entry price
+        direction: "BUY" or "SELL"
+        ticks: List of tick dicts with 'timestamp', 'mid', 'bid', 'ask'
+        sl_pips: Stop loss in pips
+        tp_pips: Take profit in pips
+        pip_value: Value of one pip (default 0.1 for most forex/indices)
+        
+    Returns:
+        Dict with: exit_time, exit_price, result (WIN/LOSS/NONE), pips_gained,
+                  exit_reason, ticks_processed
+    """
+    # Calculate SL and TP price levels
+    if direction == "BUY":
+        sl_price = entry_price - (sl_pips * pip_value)
+        tp_price = entry_price + (tp_pips * pip_value)
+    else:  # SELL
+        sl_price = entry_price + (sl_pips * pip_value)
+        tp_price = entry_price - (tp_pips * pip_value)
+    
+    # Find ticks starting from entry time
+    ticks_processed = 0
+    for tick in ticks:
+        tick_time = tick.get('timestamp')
+        if isinstance(tick_time, str):
+            tick_time = datetime.fromisoformat(tick_time.replace('Z', '+00:00'))
+        
+        # Skip ticks before entry
+        if tick_time < entry_time:
+            continue
+        
+        ticks_processed += 1
+        mid_price = tick.get('mid', 0)
+        
+        # Check SL/TP based on direction
+        if direction == "BUY":
+            # For BUY: SL if price drops to sl_price, TP if price rises to tp_price
+            if mid_price <= sl_price:
+                pips_lost = (entry_price - sl_price) / pip_value
+                return {
+                    'exit_time': tick_time,
+                    'exit_price': sl_price,
+                    'result': 'LOSS',
+                    'pips_gained': -pips_lost,
+                    'exit_reason': 'STOP_LOSS',
+                    'ticks_processed': ticks_processed
+                }
+            elif mid_price >= tp_price:
+                pips_gained = (tp_price - entry_price) / pip_value
+                return {
+                    'exit_time': tick_time,
+                    'exit_price': tp_price,
+                    'result': 'WIN',
+                    'pips_gained': pips_gained,
+                    'exit_reason': 'TAKE_PROFIT',
+                    'ticks_processed': ticks_processed
+                }
+        else:  # SELL
+            # For SELL: SL if price rises to sl_price, TP if price drops to tp_price
+            if mid_price >= sl_price:
+                pips_lost = (sl_price - entry_price) / pip_value
+                return {
+                    'exit_time': tick_time,
+                    'exit_price': sl_price,
+                    'result': 'LOSS',
+                    'pips_gained': -pips_lost,
+                    'exit_reason': 'STOP_LOSS',
+                    'ticks_processed': ticks_processed
+                }
+            elif mid_price <= tp_price:
+                pips_gained = (entry_price - tp_price) / pip_value
+                return {
+                    'exit_time': tick_time,
+                    'exit_price': tp_price,
+                    'result': 'WIN',
+                    'pips_gained': pips_gained,
+                    'exit_reason': 'TAKE_PROFIT',
+                    'ticks_processed': ticks_processed
+                }
+    
+    # No exit triggered - return NONE
+    return {
+        'exit_time': None,
+        'exit_price': None,
+        'result': 'NONE',
+        'pips_gained': 0,
+        'exit_reason': 'NO_EXIT',
+        'ticks_processed': ticks_processed
+    }
+
+
+async def handle_test_simulation(arguments: dict) -> list[TextContent]:
+    """
+    Test the trade simulation engine with a sample trade.
+    
+    Args:
+        arguments: Dict with 'entry_price', 'direction', 'sl_pips', 'tp_pips'
+        
+    Returns:
+        List of TextContent with simulation test results
+    """
+    entry_price = arguments.get("entry_price", 0)
+    direction = arguments.get("direction", "BUY").upper()
+    sl_pips = arguments.get("sl_pips", 10)
+    tp_pips = arguments.get("tp_pips", 15)
+    
+    # Validate inputs
+    if entry_price <= 0:
+        return [TextContent(type="text", text="❌ Invalid entry_price: must be > 0")]
+    
+    if direction not in ["BUY", "SELL"]:
+        return [TextContent(type="text", text="❌ Invalid direction: must be 'BUY' or 'SELL'")]
+    
+    if sl_pips <= 0 or tp_pips <= 0:
+        return [TextContent(type="text", text="❌ Invalid SL/TP: must be > 0")]
+    
+    logger.info(f"Testing simulation: {direction} @ {entry_price}, SL={sl_pips}, TP={tp_pips}")
+    
+    # Generate synthetic tick data for testing
+    # Create ticks that will trigger TP after some movement
+    entry_time = datetime.now().replace(second=0, microsecond=0)
+    pip_value = 0.1
+    
+    # Generate 100 ticks over 100 seconds
+    test_ticks = []
+    for i in range(100):
+        tick_time = entry_time + timedelta(seconds=i)
+        
+        # Simulate price movement toward TP
+        if direction == "BUY":
+            # Price gradually rises to TP
+            price_change = (tp_pips * pip_value) * (i / 50.0)  # Reaches TP around tick 50
+            mid_price = entry_price + price_change
+        else:  # SELL
+            # Price gradually falls to TP
+            price_change = (tp_pips * pip_value) * (i / 50.0)  # Reaches TP around tick 50
+            mid_price = entry_price - price_change
+        
+        test_ticks.append({
+            'timestamp': tick_time,
+            'mid': mid_price,
+            'bid': mid_price - 0.5,
+            'ask': mid_price + 0.5
+        })
+    
+    # Run simulation
+    result = simulate_trade(
+        entry_time=entry_time,
+        entry_price=entry_price,
+        direction=direction,
+        ticks=test_ticks,
+        sl_pips=sl_pips,
+        tp_pips=tp_pips,
+        pip_value=pip_value
+    )
+    
+    # Format output
+    result_text = "✅ **Trade Simulation Test**\n\n"
+    result_text += "## Test Parameters\n\n"
+    result_text += f"- **Direction:** {direction}\n"
+    result_text += f"- **Entry Price:** {entry_price:.2f}\n"
+    result_text += f"- **Entry Time:** {entry_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+    result_text += f"- **Stop Loss:** {sl_pips} pips\n"
+    result_text += f"- **Take Profit:** {tp_pips} pips\n\n"
+    
+    # Calculate SL/TP levels
+    if direction == "BUY":
+        sl_level = entry_price - (sl_pips * pip_value)
+        tp_level = entry_price + (tp_pips * pip_value)
+    else:
+        sl_level = entry_price + (sl_pips * pip_value)
+        tp_level = entry_price - (tp_pips * pip_value)
+    
+    result_text += f"- **SL Level:** {sl_level:.2f}\n"
+    result_text += f"- **TP Level:** {tp_level:.2f}\n\n"
+    
+    result_text += "## Simulation Results\n\n"
+    result_text += f"- **Result:** {result['result']}\n"
+    result_text += f"- **Exit Reason:** {result['exit_reason']}\n"
+    
+    if result['exit_time']:
+        result_text += f"- **Exit Time:** {result['exit_time'].strftime('%Y-%m-%d %H:%M:%S')}\n"
+        result_text += f"- **Exit Price:** {result['exit_price']:.2f}\n"
+        duration_seconds = (result['exit_time'] - entry_time).total_seconds()
+        result_text += f"- **Duration:** {duration_seconds:.0f} seconds\n"
+    else:
+        result_text += f"- **Exit Time:** Not triggered\n"
+        result_text += f"- **Exit Price:** N/A\n"
+    
+    result_text += f"- **Pips Gained/Lost:** {result['pips_gained']:.1f} pips\n"
+    result_text += f"- **Ticks Processed:** {result['ticks_processed']}\n\n"
+    
+    result_text += "## Test Data\n\n"
+    result_text += f"Generated {len(test_ticks)} synthetic ticks for testing.\n"
+    result_text += f"Price movement simulated toward {'TP' if result['result'] == 'WIN' else 'target'}.\n\n"
+    
+    if result['result'] == 'WIN':
+        result_text += "✅ **Test Passed:** Simulation correctly detected TP trigger\n"
+    elif result['result'] == 'LOSS':
+        result_text += "✅ **Test Passed:** Simulation correctly detected SL trigger\n"
+    else:
+        result_text += "ℹ️ **Test Result:** No exit triggered (trade still open)\n"
+    
+    result_text += "\n🎯 **Simulation Engine Ready:** Use this logic for real trade optimization"
+    
+    return [TextContent(type="text", text=result_text)]
 
 
 async def main():

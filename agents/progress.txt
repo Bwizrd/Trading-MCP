@@ -128,6 +128,60 @@
 ---
 
 ## 2026-01-21 - TM-003
+- Implemented fetch_tick_data_for_optimization tool in Trading Optimizer MCP server
+- Fetches tick data from VPS endpoint GET http://localhost:8020/getTickDataFromDB
+- Maps symbol names to pair IDs using /symbols endpoint
+- Handles symbol variations: US500, US500_SB matching
+- Validates time range (max 24 hours to prevent excessive data)
+- Parses and sorts ticks chronologically by timestamp
+- Calculates mid prices from bid/ask for execution simulation
+- Returns statistics: total ticks, duration, ticks/min, price range
+- Shows sample ticks (first 5) with formatted output
+- Handles errors: timeout (60s), HTTP status errors, invalid symbols
+
+**Files changed:**
+- mcp_servers/trading_optimizer_mcp.py (added fetch_tick_data_for_optimization)
+- agents/prd.json (marked TM-003 as passes: true)
+
+**Learnings:**
+- VPS tick endpoint requires pair ID, not symbol name
+- Symbol mapping needed: try exact match, _SB suffix, base name
+- Timestamps in milliseconds from epoch, convert to datetime for sorting
+- Mid price = (bid + ask) / 2 for execution simulation
+- Time range validation prevents excessive data requests (>24hrs)
+- Tick data provides 100+ ticks per minute for precise replay
+- Sort ticks by timestamp_ms to ensure chronological order
+- Show duration in minutes and avg ticks/min for data quality check
+
+---
+
+## 2026-01-21 - TM-004
+- Implemented simulate_trade function for trade replay with SL/TP parameters
+- Core simulation logic: loops through ticks from entry time, checks SL/TP triggers
+- Handles both BUY and SELL directions with correct price logic
+- BUY: SL if price <= entry - sl_pips, TP if price >= entry + tp_pips
+- SELL: SL if price >= entry + sl_pips, TP if price <= entry - tp_pips
+- Returns detailed results: exit_time, exit_price, result (WIN/LOSS/NONE), pips_gained
+- Tracks exit_reason (STOP_LOSS/TAKE_PROFIT/NO_EXIT) and ticks_processed
+- Added test_simulation tool for verifying simulation logic with sample trades
+- Uses pip_value parameter (default 0.1) for price-to-pips conversion
+
+**Files changed:**
+- mcp_servers/trading_optimizer_mcp.py (added simulate_trade function, test_simulation tool)
+- agents/prd.json (marked TM-004 as passes: true)
+
+**Learnings:**
+- SL/TP logic is opposite for BUY vs SELL positions
+- Use mid price from ticks for execution precision
+- Skip ticks before entry time to simulate real trade execution
+- Return ticks_processed for performance monitoring
+- NO_EXIT result when neither SL nor TP triggered (trade still open)
+- Pip value of 0.1 works for most forex pairs and indices
+- Test tool allows verification before running full optimizations
+
+---
+
+## 2026-01-21 - TM-003
 - Implemented fetch_tick_data_for_optimization tool in Trading Optimizer
 - Fetches tick-level bid/ask data from VPS endpoint (localhost:8020/getTickDataFromDB)
 - Maps symbol names to pair IDs using /symbols endpoint

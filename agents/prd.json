@@ -64,7 +64,7 @@
         "Returns: exit_time, exit_price, result (WIN/LOSS/NONE), pips gained/lost",
         "Handles both BUY and SELL directions correctly"
       ],
-      "passes": false,
+      "passes": true,
       "notes": "For BUY: SL triggers if price <= entry - sl_pips, TP if price >= entry + tp_pips. For SELL: reverse logic. Use tick mid price for execution. Track exact exit time and price."
     },
     {
