@@ -181,6 +181,35 @@
 
 ---
 
+## 2026-01-21 - TM-005 & TM-006
+- Implemented filter_positions_by_timerange and filter_ticks_by_timerange functions
+- Both accept datetime objects and filter inclusively on start_time/end_time
+- Handle multiple timestamp formats: ISO strings, milliseconds since epoch
+- Log filtering results: filtered count vs original count
+- Implemented optimize_trades_single tool combining all previous components
+- Fetches positions for date, filters by optional timerange
+- Generates HTML optimization report with summary stats and trade table
+- Reports saved to data/optimization_reports/ with timestamp
+- HTML includes: total trades, win rate, total pips, trade details table
+- Mock simulation for now (full implementation would fetch tick data per trade)
+
+**Files changed:**
+- mcp_servers/trading_optimizer_mcp.py (added filtering functions, optimize_trades_single tool)
+- agents/prd.json (marked TM-005 and TM-006 as passes: true)
+
+**Learnings:**
+- Timerange filtering essential for session-specific analysis (London/NY hours)
+- Exit times can be in different formats: ISO string, timestamp ms, datetime object
+- Need flexible timestamp parsing with fallbacks
+- Filter functions should maintain original list order
+- HTML reports need clean CSS for readability
+- Summary stats box layout using CSS grid for responsive design
+- Win/loss color coding (green/red) improves visual scanning
+- Save reports with date and parameters in filename for easy identification
+- Relative path display (vs absolute) cleaner for user output
+
+---
+
 ## 2026-01-21 - TM-003
 - Implemented fetch_tick_data_for_optimization tool in Trading Optimizer
 - Fetches tick-level bid/ask data from VPS endpoint (localhost:8020/getTickDataFromDB)

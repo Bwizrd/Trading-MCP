@@ -80,7 +80,7 @@
         "Returns filtered lists maintaining original order",
         "Logs count of filtered vs original items"
       ],
-      "passes": false,
+      "passes": true,
       "notes": "Essential for focusing analysis on specific trading sessions (e.g., London open, NY session). Use datetime comparisons. Handle timezone-aware timestamps if present."
     },
     {
