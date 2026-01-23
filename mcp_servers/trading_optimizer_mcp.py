@@ -165,6 +165,34 @@ async def list_tools() -> list[Tool]:
                 "required": ["date", "sl_pips", "tp_pips"],
                 "additionalProperties": False
             }
+        ),
+        Tool(
+            name="debug_trade_simulation",
+            description="Debug mode: Pick one random trade from a date (preferably short duration) and print every tick to see how the simulation decides to close it. Shows entry details, SL/TP levels, and processes each tick with current P/L and trigger checks.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (e.g., '2026-01-22')"
+                    },
+                    "sl_pips": {
+                        "type": "number",
+                        "description": "Stop loss in pips (e.g., 10)"
+                    },
+                    "tp_pips": {
+                        "type": "number",
+                        "description": "Take profit in pips (e.g., 20)"
+                    },
+                    "max_ticks_to_show": {
+                        "type": "number",
+                        "description": "Maximum ticks to display (default: 100)",
+                        "default": 100
+                    }
+                },
+                "required": ["date", "sl_pips", "tp_pips"],
+                "additionalProperties": False
+            }
         )
     ]
 
@@ -185,6 +213,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await handle_test_simulation(arguments)
         elif name == "optimize_trades_single":
             return await handle_optimize_trades_single(arguments)
+        elif name == "debug_trade_simulation":
+            return await handle_debug_trade_simulation(arguments)
         else:
             return [TextContent(
                 type="text",
@@ -531,6 +561,22 @@ async def handle_fetch_tick_data(arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=error_msg)]
 
 
+def get_pip_value(symbol_name: str) -> float:
+    """
+    Get pip value for a symbol.
+    
+    Using 1.0 for all symbols so that pips = GBP (for lot size 1).
+    This makes pips directly comparable across all symbols.
+    
+    Args:
+        symbol_name: Symbol name (e.g., 'XAUUSD_SB', 'US30_SB')
+    
+    Returns:
+        Pip value in price points (always 1.0)
+    """
+    return 1.0  # 1 pip = 1 point = £1 for all symbols
+
+
 def simulate_trade(
     entry_time: datetime,
     entry_price: float,
@@ -556,6 +602,9 @@ def simulate_trade(
         Dict with: exit_time, exit_price, result (WIN/LOSS/NONE), pips_gained,
                   exit_reason, ticks_processed
     """
+    # Spread tolerance - allow TP/SL to trigger within 1.5 pips of target
+    spread_tolerance = 1.5
+    
     # Calculate SL and TP price levels
     if direction == "BUY":
         sl_price = entry_price - (sl_pips * pip_value)
@@ -576,12 +625,14 @@ def simulate_trade(
             continue
         
         ticks_processed += 1
-        mid_price = tick.get('mid', 0)
+        bid_price = tick.get('bid', 0)
+        ask_price = tick.get('ask', 0)
         
-        # Check SL/TP based on direction
+        # BUY: Enter at ASK, exit at BID - check BID for SL/TP
+        # SELL: Enter at BID, exit at ASK - check ASK for SL/TP
         if direction == "BUY":
-            # For BUY: SL if price drops to sl_price, TP if price rises to tp_price
-            if mid_price <= sl_price:
+            # Check BID (exit price) against SL/TP levels (with spread tolerance)
+            if bid_price <= sl_price + spread_tolerance:
                 pips_lost = (entry_price - sl_price) / pip_value
                 return {
                     'exit_time': tick_time,
@@ -591,7 +642,7 @@ def simulate_trade(
                     'exit_reason': 'STOP_LOSS',
                     'ticks_processed': ticks_processed
                 }
-            elif mid_price >= tp_price:
+            elif bid_price >= tp_price - spread_tolerance:
                 pips_gained = (tp_price - entry_price) / pip_value
                 return {
                     'exit_time': tick_time,
@@ -602,8 +653,8 @@ def simulate_trade(
                     'ticks_processed': ticks_processed
                 }
         else:  # SELL
-            # For SELL: SL if price rises to sl_price, TP if price drops to tp_price
-            if mid_price >= sl_price:
+            # Check ASK (exit price) against SL/TP levels (with spread tolerance)
+            if ask_price >= sl_price - spread_tolerance:
                 pips_lost = (sl_price - entry_price) / pip_value
                 return {
                     'exit_time': tick_time,
@@ -613,7 +664,7 @@ def simulate_trade(
                     'exit_reason': 'STOP_LOSS',
                     'ticks_processed': ticks_processed
                 }
-            elif mid_price <= tp_price:
+            elif ask_price <= tp_price + spread_tolerance:
                 pips_gained = (entry_price - tp_price) / pip_value
                 return {
                     'exit_time': tick_time,
@@ -881,24 +932,54 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
             
             closed_trades = data.get("closedTrades", [])
             
-            # Parse positions
+            # First pass: Build entry timestamp and direction map by positionId
+            # Some trades have separate entry and exit deals, others are combined
+            entry_timestamps = {}
+            entry_directions = {}
+            for trade in closed_trades:
+                position_id = trade.get("positionId")
+                # Entry deals have no closePositionDetail
+                if "closePositionDetail" not in trade and position_id:
+                    entry_timestamp_ms = trade.get("executionTimestamp", 0)
+                    if entry_timestamp_ms:
+                        entry_timestamps[position_id] = datetime.fromtimestamp(entry_timestamp_ms / 1000)
+                    # Entry tradeSide: 1=BUY entry, 2=SELL entry
+                    entry_side = trade.get("tradeSide")
+                    if entry_side:
+                        entry_directions[position_id] = "BUY" if entry_side == 1 else "SELL"
+            
+            logger.info(f"Found {len(entry_timestamps)} entry timestamps and {len(entry_directions)} entry directions from separate entry deals")
+            
+            # Second pass: Parse positions (exit deals)
             positions = []
             for trade in closed_trades:
                 if "closePositionDetail" not in trade:
                     continue
-                    
+                
+                position_id = trade.get("positionId")
+                
+                # Determine direction: use entry tradeSide if available, else infer from exit tradeSide
+                # Exit tradeSide: 1=close SELL (so was SELL), 2=close BUY (so was BUY)
+                if position_id in entry_directions:
+                    direction = entry_directions[position_id]
+                else:
+                    # Fallback: infer from exit tradeSide
+                    direction = "SELL" if trade.get("tradeSide") == 1 else "BUY"
+                
                 position = {
                     "dealId": trade.get("dealId"),
-                    "positionId": trade.get("positionId"),
+                    "positionId": position_id,
                     "symbolId": trade.get("symbolId"),
-                    "direction": "SELL" if trade.get("tradeSide") == 1 else "BUY",
+                    "direction": direction,
                     "volume": trade.get("volume"),
                     "entryPrice": trade["closePositionDetail"].get("entryPrice"),
                     "exitPrice": trade.get("price"),
                     "exitTime": datetime.fromtimestamp(trade.get("executionTimestamp", 0) / 1000),
                     "exitTimestamp": trade.get("executionTimestamp"),
                     "profit": trade.get("profit", 0),
-                    "comment": trade.get("comment", "")
+                    "comment": trade.get("comment", ""),
+                    # Use actual entry time if available, otherwise estimate
+                    "entryTime": entry_timestamps.get(position_id)
                 }
                 positions.append(position)
             
@@ -916,7 +997,7 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
             
             logger.info(f"Found {len(filtered_positions)} positions in timerange")
             
-            # Step 2: Map symbol IDs to names and fetch tick data
+            # Step 2: Fetch symbols mapping and prepare for per-trade tick fetching
             symbol_map = {
                 205: "NAS100_SB",   # Nasdaq 100
                 220: "US500_SB",    # S&P 500
@@ -931,10 +1012,6 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
                 170: "ETHUSD"       # Ethereum
             }
             
-            # Get unique symbols and fetch tick data for the full day
-            symbol_ids = set(pos['symbolId'] for pos in filtered_positions)
-            tick_data_by_symbol = {}
-            
             vps_url = "http://localhost:8020"
             
             # Fetch symbols mapping first
@@ -943,62 +1020,22 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
             symbols_data = symbols_response.json()
             symbols_list = symbols_data.get('symbols', [])
             
-            for symbol_id in symbol_ids:
+            # Build symbol ID to pair ID mapping
+            symbol_to_pair = {}
+            for symbol_id in set(pos['symbolId'] for pos in filtered_positions):
                 symbol_name = symbol_map.get(symbol_id, f"Symbol_{symbol_id}")
-                
-                # Find pair ID
-                pair_id = None
                 base_symbol = symbol_name.replace('_SB', '')
+                
                 for sym in symbols_list:
                     sym_name = sym.get('name', '')
                     if sym_name == symbol_name or sym_name == base_symbol or sym_name == f"{base_symbol}_SB":
-                        pair_id = sym.get('value')
+                        symbol_to_pair[symbol_id] = sym.get('value')
                         break
                 
-                if not pair_id:
-                    logger.warning(f"Could not find pair ID for symbol {symbol_name}, skipping")
-                    continue
-                
-                # Fetch tick data for full day
-                start_iso = start_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                end_iso = end_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-                
-                tick_url = f"{vps_url}/getTickDataFromDB?pair={pair_id}&startDate={start_iso}&endDate={end_iso}&maxTicks=300000"
-                logger.info(f"Fetching ticks for {symbol_name}: {tick_url}")
-                
-                tick_response = await client.get(tick_url, timeout=60.0)
-                tick_response.raise_for_status()
-                tick_data = tick_response.json()
-                
-                # Parse ticks
-                ticks_raw = tick_data.get('data', [])
-                ticks_parsed = []
-                
-                for tick in ticks_raw:
-                    try:
-                        ts_ms = tick.get('timestamp', 0)
-                        ts = datetime.fromtimestamp(ts_ms / 1000) if ts_ms else None
-                        bid = float(tick.get('bid', 0))
-                        ask = float(tick.get('ask', 0))
-                        mid = (bid + ask) / 2 if bid and ask else 0
-                        
-                        if ts and bid and ask:
-                            ticks_parsed.append({
-                                'timestamp': ts,
-                                'timestamp_ms': ts_ms,
-                                'bid': bid,
-                                'ask': ask,
-                                'mid': mid
-                            })
-                    except (ValueError, TypeError):
-                        continue
-                
-                # Sort chronologically
-                ticks_parsed.sort(key=lambda t: t['timestamp_ms'])
-                tick_data_by_symbol[symbol_id] = ticks_parsed
-                logger.info(f"Loaded {len(ticks_parsed)} ticks for {symbol_name}")
+                if symbol_id not in symbol_to_pair:
+                    logger.warning(f"Could not find pair ID for symbol {symbol_name}")
             
-            # Step 3: Simulate each trade with actual tick data
+            # Step 3: Simulate each trade - fetch ticks individually with narrow window
             results = []
             wins = 0
             losses = 0
@@ -1008,37 +1045,90 @@ async def handle_optimize_trades_single(arguments: dict) -> list[TextContent]:
             for pos in filtered_positions:
                 symbol_id = pos['symbolId']
                 symbol_name = symbol_map.get(symbol_id, f"Symbol_{symbol_id}")
+                pair_id = symbol_to_pair.get(symbol_id)
                 
-                # Get tick data for this symbol
-                ticks = tick_data_by_symbol.get(symbol_id, [])
-                
-                if not ticks:
-                    logger.warning(f"No tick data for {symbol_name}, skipping position {pos['dealId']}")
+                if not pair_id:
+                    logger.warning(f"No pair ID for {symbol_name}, skipping position {pos['dealId']}")
                     continue
                 
-                # We don't have entry time, only exit time from the position
-                # Use exit time minus 2 hours as approximate entry time
-                # In real scenario, you'd fetch entry time from another endpoint
-                entry_time = pos['exitTime'] - timedelta(hours=2)
+                # Use actual entry time if available
+                entry_time = pos.get('entryTime')
+                if not entry_time:
+                    entry_time = pos['exitTime'] - timedelta(hours=2)
+                    logger.debug(f"Position {pos['dealId']} - using estimated entry time")
+                else:
+                    logger.debug(f"Position {pos['dealId']} - using actual entry time")
+                
+                # Fetch tick data with narrow window around this specific trade
+                # Buffer: 30 seconds before entry, 30 seconds after exit
+                tick_start = (entry_time - timedelta(seconds=30)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                tick_end = (pos['exitTime'] + timedelta(seconds=30)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                
+                tick_url = f"{vps_url}/getTickDataFromDB?pair={pair_id}&startDate={tick_start}&endDate={tick_end}&maxTicks=50000"
+                
+                try:
+                    tick_response = await client.get(tick_url, timeout=30.0)
+                    tick_response.raise_for_status()
+                    tick_data = tick_response.json()
+                    
+                    # Parse ticks
+                    ticks_raw = tick_data.get('data', [])
+                    ticks_parsed = []
+                    
+                    for tick in ticks_raw:
+                        try:
+                            ts_ms = tick.get('timestamp', 0)
+                            ts = datetime.fromtimestamp(ts_ms / 1000) if ts_ms else None
+                            bid = float(tick.get('bid', 0))
+                            ask = float(tick.get('ask', 0))
+                            mid = (bid + ask) / 2 if bid and ask else 0
+                            
+                            if ts and bid and ask:
+                                ticks_parsed.append({
+                                    'timestamp': ts,
+                                    'timestamp_ms': ts_ms,
+                                    'bid': bid,
+                                    'ask': ask,
+                                    'mid': mid
+                                })
+                        except (ValueError, TypeError):
+                            continue
+                    
+                    # Sort chronologically
+                    ticks_parsed.sort(key=lambda t: t['timestamp_ms'])
+                    
+                    if not ticks_parsed:
+                        logger.warning(f"No tick data for {symbol_name} position {pos['dealId']}, skipping")
+                        continue
+                    
+                    logger.debug(f"Loaded {len(ticks_parsed)} ticks for position {pos['dealId']} ({symbol_name})")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to fetch ticks for position {pos['dealId']}: {e}")
+                    continue
+                
+                # Determine pip value based on symbol
+                pip_value = get_pip_value(symbol_name)
                 
                 # Run simulation
                 sim_result = simulate_trade(
                     entry_time=entry_time,
                     entry_price=pos['entryPrice'],
                     direction=pos['direction'],
-                    ticks=ticks,
+                    ticks=ticks_parsed,
                     sl_pips=sl_pips,
                     tp_pips=tp_pips,
-                    pip_value=0.1
+                    pip_value=pip_value
                 )
                 
-                # Calculate original pips
-                # For all symbols: 1 point = 1 pip (direct price difference)
-                # Note: Broker may display Gold pips differently but we use actual price movement
+                # Calculate original pips using same pip_value
+                # Price difference in points, then convert to pips
                 if pos['direction'] == 'BUY':
-                    original_pips = pos['exitPrice'] - pos['entryPrice']
+                    price_diff = pos['exitPrice'] - pos['entryPrice']
                 else:  # SELL
-                    original_pips = pos['entryPrice'] - pos['exitPrice']
+                    price_diff = pos['entryPrice'] - pos['exitPrice']
+                
+                original_pips = price_diff / pip_value
                 
                 simulated_result = {
                     'dealId': pos['dealId'],
@@ -1294,12 +1384,316 @@ function copyTableToClipboard() {
             result_text += f"- **Avg Win:** {avg_win:+.1f} pips\n"
             result_text += f"- **Avg Loss:** {avg_loss:.1f} pips\n\n"
             result_text += f"📄 **HTML Report:** `{report_path.relative_to(Path.cwd())}`\n\n"
-            result_text += f"✅ **Real Simulation:** Used {sum(len(t) for t in tick_data_by_symbol.values()):,} ticks for precise replay\n"
+            result_text += f"✅ **Per-Trade Tick Fetching:** Fetched tick data individually for each trade with narrow time windows for accuracy\n"
             
             return [TextContent(type="text", text=result_text)]
             
     except Exception as e:
         error_msg = f"❌ Optimization failed: {str(e)}\n"
+        logger.error(error_msg, exc_info=True)
+        return [TextContent(type="text", text=error_msg)]
+
+
+async def handle_debug_trade_simulation(arguments: dict) -> list[TextContent]:
+    """
+    Debug mode: Pick one random trade and show every tick to see how simulation decides.
+    """
+    import random
+    
+    try:
+        date_str = arguments["date"]
+        sl_pips = float(arguments["sl_pips"])
+        tp_pips = float(arguments["tp_pips"])
+        max_ticks_to_show = arguments.get("max_ticks_to_show", 100)
+        
+        deals_url = "http://localhost:8000"
+        vps_url = "http://localhost:8020"
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Step 1: Fetch closed positions
+            deals_response = await client.get(f"{deals_url}/deals/{date_str}")
+            deals_response.raise_for_status()
+            deals_data = deals_response.json()
+            
+            closed_trades = deals_data.get('closedTrades', [])
+            if not closed_trades:
+                return [TextContent(type="text", text=f"❌ No closed trades found for {date_str}")]
+            
+            # First pass: Build entry timestamp and direction map by positionId
+            entry_timestamps = {}
+            entry_directions = {}
+            for trade in closed_trades:
+                position_id = trade.get("positionId")
+                if "closePositionDetail" not in trade and position_id:
+                    entry_timestamp_ms = trade.get("executionTimestamp", 0)
+                    if entry_timestamp_ms:
+                        entry_timestamps[position_id] = datetime.fromtimestamp(entry_timestamp_ms / 1000)
+                    # Entry tradeSide: 1=BUY entry, 2=SELL entry
+                    entry_side = trade.get("tradeSide")
+                    if entry_side:
+                        entry_directions[position_id] = "BUY" if entry_side == 1 else "SELL"
+            
+            # Second pass: Parse positions (exit deals)
+            positions = []
+            for trade in closed_trades:
+                # Skip if no closePositionDetail (entry trades)
+                if 'closePositionDetail' not in trade:
+                    continue
+                    
+                detail = trade.get('closePositionDetail', {})
+                entry_price = detail.get('entryPrice', 0)
+                exit_price = trade.get('price', 0)  # Exit price is at top level, not in detail
+                symbol_id = trade.get('symbolId', 0)
+                trade_side = trade.get('tradeSide', 0)
+                position_id = trade.get('positionId')
+                exit_timestamp_ms = trade.get('executionTimestamp', 0)
+                
+                # Determine direction: use entry tradeSide if available, else infer from exit tradeSide
+                if position_id in entry_directions:
+                    direction = entry_directions[position_id]
+                else:
+                    # Fallback: exit tradeSide 1=close SELL (so was SELL), 2=close BUY (so was BUY)
+                    direction = 'SELL' if trade_side == 1 else 'BUY'
+                
+                if exit_timestamp_ms and entry_price and exit_price:
+                    exit_time = datetime.fromtimestamp(exit_timestamp_ms / 1000)
+                    # Use actual entry time if available
+                    entry_time = entry_timestamps.get(position_id)
+                    
+                    positions.append({
+                        'dealId': trade.get('dealId', 0),
+                        'positionId': position_id,
+                        'symbolId': symbol_id,
+                        'direction': direction,
+                        'entryPrice': entry_price,
+                        'exitPrice': exit_price,
+                        'exitTime': exit_time,
+                        'entryTime': entry_time  # May be None
+                    })
+            
+            # Sort by duration (prefer short trades with actual entry time)
+            for pos in positions:
+                if pos['entryTime']:
+                    pos['duration'] = (pos['exitTime'] - pos['entryTime']).total_seconds()
+                else:
+                    pos['duration'] = 7200  # 2 hours estimate
+            
+            positions.sort(key=lambda p: p['duration'])
+            
+            # Pick first one (shortest with actual entry time preferred)
+            selected = positions[0]
+            
+            # Symbol mapping
+            symbol_map = {
+                205: 'NAS100_SB', 220: 'US500_SB', 217: 'UK100_SB', 200: 'GER40_SB',
+                219: 'US30_SB', 238: 'XAGUSD_SB', 201: 'HK50_SB', 241: 'XAUUSD_SB',
+                188: 'FRA40_SB', 160: 'BTCUSD', 170: 'ETHUSD'
+            }
+            
+            symbol_name = symbol_map.get(selected['symbolId'], f"Symbol_{selected['symbolId']}")
+            
+            # Fetch symbols to get pair ID
+            symbols_response = await client.get(f"{vps_url}/symbols")
+            symbols_response.raise_for_status()
+            symbols_data = symbols_response.json()
+            symbols_list = symbols_data.get('symbols', [])
+            
+            pair_id = None
+            base_symbol = symbol_name.replace('_SB', '')
+            for sym in symbols_list:
+                sym_name = sym.get('name', '')
+                if sym_name == symbol_name or sym_name == base_symbol or sym_name == f"{base_symbol}_SB":
+                    pair_id = sym.get('value')
+                    break
+            
+            if not pair_id:
+                return [TextContent(type="text", text=f"❌ Could not find pair ID for {symbol_name}")]
+            
+            # Step 2: Fetch tick data for this trade
+            entry_time = selected.get('entryTime')
+            if not entry_time:
+                # Estimate if no separate entry deal found
+                entry_time = selected['exitTime'] - timedelta(hours=2)
+                has_actual_entry = False
+            else:
+                has_actual_entry = True
+                
+            exit_time = selected['exitTime']
+            
+            # Add buffer to ensure we get ticks
+            start_iso = (entry_time - timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            end_iso = (exit_time + timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            
+            tick_url = f"{vps_url}/getTickDataFromDB?pair={pair_id}&startDate={start_iso}&endDate={end_iso}&maxTicks=10000"
+            
+            tick_response = await client.get(tick_url, timeout=60.0)
+            tick_response.raise_for_status()
+            tick_data = tick_response.json()
+            
+            # Parse ticks
+            ticks_raw = tick_data.get('data', [])
+            ticks_parsed = []
+            
+            for tick in ticks_raw:
+                try:
+                    ts_ms = tick.get('timestamp', 0)
+                    ts = datetime.fromtimestamp(ts_ms / 1000) if ts_ms else None
+                    bid = float(tick.get('bid', 0))
+                    ask = float(tick.get('ask', 0))
+                    mid = (bid + ask) / 2 if bid and ask else 0
+                    
+                    if ts and bid and ask:
+                        ticks_parsed.append({
+                            'timestamp': ts,
+                            'timestamp_ms': ts_ms,
+                            'bid': bid,
+                            'ask': ask,
+                            'mid': mid
+                        })
+                except (ValueError, TypeError):
+                    continue
+            
+            ticks_parsed.sort(key=lambda t: t['timestamp_ms'])
+            
+            # Step 3: Run simulation with verbose output
+            pip_value = 0.1
+            entry_price = selected['entryPrice']
+            direction = selected['direction']
+            
+            if direction == "BUY":
+                sl_price = entry_price - (sl_pips * pip_value)
+                tp_price = entry_price + (tp_pips * pip_value)
+            else:  # SELL
+                sl_price = entry_price + (sl_pips * pip_value)
+                tp_price = entry_price - (tp_pips * pip_value)
+            
+            # Build output
+            result_text = f"🐛 **DEBUG MODE: Trade Simulation**\n\n"
+            result_text += f"## Selected Trade\n"
+            result_text += f"- **Deal ID:** {selected['dealId']}\n"
+            result_text += f"- **Position ID:** {selected['positionId']}\n"
+            result_text += f"- **Symbol:** {symbol_name} (ID: {selected['symbolId']})\n"
+            result_text += f"- **Direction:** {direction}\n"
+            result_text += f"- **Entry Price:** {entry_price}\n"
+            result_text += f"- **Entry Time:** {entry_time.strftime('%Y-%m-%d %H:%M:%S')} {'✅ ACTUAL' if has_actual_entry else '⚠️ ESTIMATED'}\n"
+            result_text += f"- **Exit Time (actual):** {exit_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            result_text += f"- **Exit Price (actual):** {selected['exitPrice']}\n"
+            if has_actual_entry:
+                duration = (exit_time - entry_time).total_seconds()
+                result_text += f"- **Trade Duration:** {duration/60:.1f} minutes\n"
+            result_text += "\n"
+            
+            result_text += f"## Simulation Parameters\n"
+            result_text += f"- **Stop Loss:** {sl_pips} pips → Price: {sl_price:.2f}\n"
+            result_text += f"- **Take Profit:** {tp_pips} pips → Price: {tp_price:.2f}\n"
+            result_text += f"- **Pip Value:** {pip_value}\n\n"
+            
+            result_text += f"## Tick Data Retrieved\n"
+            result_text += f"- **Total Ticks:** {len(ticks_parsed)}\n"
+            result_text += f"- **Time Range:** {start_iso} to {end_iso}\n\n"
+            
+            # Find ticks starting from entry
+            relevant_ticks = [t for t in ticks_parsed if t['timestamp'] >= entry_time]
+            
+            result_text += f"- **Ticks After Entry:** {len(relevant_ticks)}\n\n"
+            
+            if not relevant_ticks:
+                result_text += "❌ **ERROR:** No ticks found after entry time!\n"
+                result_text += f"Entry time: {entry_time}\n"
+                result_text += f"First tick: {ticks_parsed[0]['timestamp'] if ticks_parsed else 'N/A'}\n"
+                result_text += f"Last tick: {ticks_parsed[-1]['timestamp'] if ticks_parsed else 'N/A'}\n"
+                return [TextContent(type="text", text=result_text)]
+            
+            # Show timing context
+            result_text += f"**Tick Timing Analysis:**\n"
+            result_text += f"- Entry timestamp (ms): {int(entry_time.timestamp() * 1000)}\n"
+            result_text += f"- First tick after entry: {relevant_ticks[0]['timestamp'].strftime('%H:%M:%S.%f')[:-3]}\n"
+            result_text += f"- First tick timestamp (ms): {relevant_ticks[0]['timestamp_ms']}\n"
+            time_gap = (relevant_ticks[0]['timestamp'] - entry_time).total_seconds()
+            result_text += f"- **Time gap:** {time_gap:.3f} seconds\n"
+            result_text += f"- Expected ticks in gap: ~{int(time_gap * 1000)} (if 1ms resolution)\n\n"
+            
+            result_text += f"## Tick-by-Tick Simulation (showing first {max_ticks_to_show} ticks)\n\n"
+            result_text += "```\n"
+            result_text += f"{'Tick':<5} {'Time':<12} {'Bid':<10} {'Ask':<10} {'Mid':<10} {'P/L':<10} {'Status'}\n"
+            result_text += "-" * 80 + "\n"
+            
+            ticks_processed = 0
+            exit_found = False
+            exit_reason = None
+            exit_tick = None
+            
+            for i, tick in enumerate(relevant_ticks):
+                ticks_processed += 1
+                mid_price = tick['mid']
+                
+                # Calculate current P/L
+                if direction == "BUY":
+                    current_pl = (mid_price - entry_price) / pip_value
+                else:  # SELL
+                    current_pl = (entry_price - mid_price) / pip_value
+                
+                # Check SL/TP
+                status = "OK"
+                if direction == "BUY":
+                    if mid_price <= sl_price:
+                        status = "🛑 STOP_LOSS"
+                        exit_found = True
+                        exit_reason = "STOP_LOSS"
+                        exit_tick = tick
+                    elif mid_price >= tp_price:
+                        status = "✅ TAKE_PROFIT"
+                        exit_found = True
+                        exit_reason = "TAKE_PROFIT"
+                        exit_tick = tick
+                else:  # SELL
+                    if mid_price >= sl_price:
+                        status = "🛑 STOP_LOSS"
+                        exit_found = True
+                        exit_reason = "STOP_LOSS"
+                        exit_tick = tick
+                    elif mid_price <= tp_price:
+                        status = "✅ TAKE_PROFIT"
+                        exit_found = True
+                        exit_reason = "TAKE_PROFIT"
+                        exit_tick = tick
+                
+                # Only show first N ticks
+                if i < max_ticks_to_show:
+                    time_str = tick['timestamp'].strftime('%H:%M:%S')
+                    result_text += f"{i+1:<5} {time_str:<12} {tick['bid']:<10.2f} {tick['ask']:<10.2f} {mid_price:<10.2f} {current_pl:<+10.1f} {status}\n"
+                
+                if exit_found:
+                    if i >= max_ticks_to_show:
+                        result_text += f"... (skipped ticks {max_ticks_to_show} to {i})\n"
+                        time_str = tick['timestamp'].strftime('%H:%M:%S')
+                        result_text += f"{i+1:<5} {time_str:<12} {tick['bid']:<10.2f} {tick['ask']:<10.2f} {mid_price:<10.2f} {current_pl:<+10.1f} {status}\n"
+                    break
+            
+            result_text += "```\n\n"
+            
+            result_text += f"## Simulation Result\n"
+            result_text += f"- **Ticks Processed:** {ticks_processed}\n"
+            
+            if exit_found:
+                result_text += f"- **Exit Reason:** {exit_reason}\n"
+                result_text += f"- **Exit Time:** {exit_tick['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}\n"
+                result_text += f"- **Exit Price:** {exit_tick['mid']:.2f}\n"
+                
+                if direction == "BUY":
+                    final_pips = (exit_tick['mid'] - entry_price) / pip_value
+                else:
+                    final_pips = (entry_price - exit_tick['mid']) / pip_value
+                
+                result_text += f"- **Final P/L:** {final_pips:+.1f} pips\n"
+            else:
+                result_text += f"- **Exit Reason:** NO_EXIT (ran out of ticks)\n"
+                result_text += f"- **Total Ticks Available:** {len(relevant_ticks)}\n"
+            
+            return [TextContent(type="text", text=result_text)]
+            
+    except Exception as e:
+        error_msg = f"❌ Debug failed: {str(e)}\n"
         logger.error(error_msg, exc_info=True)
         return [TextContent(type="text", text=error_msg)]
 

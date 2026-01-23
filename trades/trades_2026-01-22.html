@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Trades - 2026-01-22</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #f5f5f5; 
+        }
+        .container { 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        }
+        h1 { 
+            color: #333; 
+            border-bottom: 3px solid #4CAF50; 
+            padding-bottom: 10px; 
+        }
+        .summary { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
+            gap: 15px; 
+            margin: 20px 0; 
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .stat-box { 
+            text-align: center; 
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            border-left: 4px solid #4CAF50;
+        }
+        .stat-label { 
+            color: #666; 
+            font-size: 12px; 
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .stat-value { 
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #333; 
+            margin-top: 5px;
+        }
+        .positive { color: #4CAF50; }
+        .negative { color: #f44336; }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 20px 0; 
+        }
+        th { 
+            background: #4CAF50; 
+            color: white; 
+            padding: 12px; 
+            text-align: left; 
+            font-size: 13px;
+            position: sticky;
+            top: 0;
+        }
+        td { 
+            padding: 10px; 
+            border-bottom: 1px solid #ddd; 
+            font-size: 13px;
+        }
+        tr:hover { background: #f5f5f5; }
+        .copy-btn { 
+            background: #4CAF50; 
+            color: white; 
+            padding: 12px 24px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            margin: 10px 0; 
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .copy-btn:hover { background: #45a049; }
+        .copy-btn:active { background: #3d8b40; }
+        .copied { background: #2196F3 !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Trading Report - 2026-01-22</h1>
+        
+        <div class="summary">
+            <div class="stat-box">
+                <div class="stat-label">Total Trades</div>
+                <div class="stat-value">135</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Win Rate</div>
+                <div class="stat-value negative">29.6%</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Wins / Losses</div>
+                <div class="stat-value">40 / 95</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total Pips</div>
+                <div class="stat-value negative">-166.5</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Total P/L</div>
+                <div class="stat-value negative">£-166.49</div>
+            </div>
+        </div>
+        &#128203;
+        <button class="copy-btn" onclick="copyTableToClipboard()">📋 Copy Table to Clipboard</button>
+        
+        <table id="tradesTable">
+            <thead>
+                <tr>
+                    <th>Deal ID</th>
+                    <th>Symbol</th>
+                    <th>Direction</th>
+                    <th>Entry Time</th>
+                    <th>Entry Price</th>
+                    <th>Close Time</th>
+                    <th>Close Price</th>
+                    <th>Pip Value</th>
+                    <th>Pips</th>
+                    <th>P/L (£)</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr>
+                    <td>50346948</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>Unknown</td>
+                    <td>25409.50</td>
+                    <td>2026-01-22 00:08:18</td>
+                    <td>25420.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.3</td>
+                    <td class="negative">£-11.30</td>
+                </tr>
+
+                <tr>
+                    <td>50347042</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 00:16:02</td>
+                    <td>25419.10</td>
+                    <td>2026-01-22 00:17:41</td>
+                    <td>25430.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.2</td>
+                    <td class="negative">£-11.20</td>
+                </tr>
+
+                <tr>
+                    <td>50347048</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>Unknown</td>
+                    <td>6875.90</td>
+                    <td>2026-01-22 00:18:40</td>
+                    <td>6896.00</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50347209</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 00:20:02</td>
+                    <td>25426.90</td>
+                    <td>2026-01-22 00:33:00</td>
+                    <td>25436.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50347517</td>
+                    <td>XAUUSD_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 00:01:01</td>
+                    <td>4786.14</td>
+                    <td>2026-01-22 01:03:17</td>
+                    <td>4775.69</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.5</td>
+                    <td class="negative">£-10.45</td>
+                </tr>
+
+                <tr>
+                    <td>50347573</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 00:55:03</td>
+                    <td>49142.00</td>
+                    <td>2026-01-22 01:07:29</td>
+                    <td>49152.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50347635</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:11:02</td>
+                    <td>49144.80</td>
+                    <td>2026-01-22 01:14:25</td>
+                    <td>49154.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50347650</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:16:02</td>
+                    <td>49148.80</td>
+                    <td>2026-01-22 01:16:42</td>
+                    <td>49158.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50347700</td>
+                    <td>XAUUSD_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 01:06:01</td>
+                    <td>4782.39</td>
+                    <td>2026-01-22 01:20:34</td>
+                    <td>4802.53</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.14</td>
+                </tr>
+
+                <tr>
+                    <td>50347712</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:19:02</td>
+                    <td>49154.30</td>
+                    <td>2026-01-22 01:21:05</td>
+                    <td>49164.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50347742</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:24:02</td>
+                    <td>25433.60</td>
+                    <td>2026-01-22 01:27:21</td>
+                    <td>25444.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.7</td>
+                    <td class="negative">£-10.70</td>
+                </tr>
+
+                <tr>
+                    <td>50347743</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:22:02</td>
+                    <td>49159.10</td>
+                    <td>2026-01-22 01:27:45</td>
+                    <td>49169.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50348427</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:28:01</td>
+                    <td>25443.30</td>
+                    <td>2026-01-22 01:34:49</td>
+                    <td>25453.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50349690</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:37:01</td>
+                    <td>25448.10</td>
+                    <td>2026-01-22 01:49:44</td>
+                    <td>25458.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50350012</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:56:03</td>
+                    <td>49164.60</td>
+                    <td>2026-01-22 01:57:32</td>
+                    <td>49174.60</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50350095</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 02:01:02</td>
+                    <td>49175.70</td>
+                    <td>2026-01-22 02:03:58</td>
+                    <td>49186.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50351552</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 02:08:02</td>
+                    <td>49192.30</td>
+                    <td>2026-01-22 02:29:05</td>
+                    <td>49172.10</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.2</td>
+                    <td class="positive">£+20.20</td>
+                </tr>
+
+                <tr>
+                    <td>50351597</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:51:01</td>
+                    <td>25454.50</td>
+                    <td>2026-01-22 02:31:42</td>
+                    <td>25434.40</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50351598</td>
+                    <td>XAUUSD_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:26:01</td>
+                    <td>4805.03</td>
+                    <td>2026-01-22 02:32:04</td>
+                    <td>4785.01</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.0</td>
+                    <td class="positive">£+20.02</td>
+                </tr>
+
+                <tr>
+                    <td>50351690</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 02:35:02</td>
+                    <td>25433.30</td>
+                    <td>2026-01-22 02:44:33</td>
+                    <td>25423.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50353100</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 02:39:03</td>
+                    <td>49164.60</td>
+                    <td>2026-01-22 03:05:54</td>
+                    <td>49184.70</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50353101</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 02:47:02</td>
+                    <td>25427.00</td>
+                    <td>2026-01-22 03:06:02</td>
+                    <td>25447.30</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.3</td>
+                    <td class="positive">£+20.30</td>
+                </tr>
+
+                <tr>
+                    <td>50353179</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 03:13:02</td>
+                    <td>49186.70</td>
+                    <td>2026-01-22 03:23:49</td>
+                    <td>49196.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50353553</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 03:25:02</td>
+                    <td>49189.90</td>
+                    <td>2026-01-22 04:15:51</td>
+                    <td>49168.70</td>
+                    <td>1.0</td>
+                    <td class="positive">+21.2</td>
+                    <td class="positive">£+21.20</td>
+                </tr>
+
+                <tr>
+                    <td>50353592</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 04:20:03</td>
+                    <td>49168.10</td>
+                    <td>2026-01-22 04:20:35</td>
+                    <td>49158.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50353906</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 03:26:02</td>
+                    <td>25442.90</td>
+                    <td>2026-01-22 05:12:53</td>
+                    <td>25422.90</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.0</td>
+                    <td class="positive">£+20.00</td>
+                </tr>
+
+                <tr>
+                    <td>50353990</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 04:46:04</td>
+                    <td>49163.00</td>
+                    <td>2026-01-22 05:23:24</td>
+                    <td>49153.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50354067</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 05:14:01</td>
+                    <td>25424.90</td>
+                    <td>2026-01-22 05:37:23</td>
+                    <td>25414.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50354116</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 05:37:01</td>
+                    <td>49150.50</td>
+                    <td>2026-01-22 05:41:10</td>
+                    <td>49136.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-14.0</td>
+                    <td class="negative">£-14.00</td>
+                </tr>
+
+                <tr>
+                    <td>50354177</td>
+                    <td>XAUUSD_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 02:35:01</td>
+                    <td>4784.54</td>
+                    <td>2026-01-22 05:45:46</td>
+                    <td>4804.72</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.2</td>
+                    <td class="positive">£+20.18</td>
+                </tr>
+
+                <tr>
+                    <td>50354205</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 05:46:02</td>
+                    <td>49132.40</td>
+                    <td>2026-01-22 05:47:23</td>
+                    <td>49121.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.9</td>
+                    <td class="negative">£-10.90</td>
+                </tr>
+
+                <tr>
+                    <td>50354206</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 05:45:03</td>
+                    <td>25404.50</td>
+                    <td>2026-01-22 05:47:40</td>
+                    <td>25394.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50354288</td>
+                    <td>XAUUSD_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 05:47:01</td>
+                    <td>4805.47</td>
+                    <td>2026-01-22 05:52:04</td>
+                    <td>4815.65</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.18</td>
+                </tr>
+
+                <tr>
+                    <td>50354314</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 05:51:02</td>
+                    <td>49125.60</td>
+                    <td>2026-01-22 05:53:27</td>
+                    <td>49115.60</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50354647</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 05:55:03</td>
+                    <td>25393.30</td>
+                    <td>2026-01-22 06:08:17</td>
+                    <td>25383.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50354661</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 05:55:02</td>
+                    <td>49119.10</td>
+                    <td>2026-01-22 06:09:30</td>
+                    <td>49108.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.9</td>
+                    <td class="negative">£-10.90</td>
+                </tr>
+
+                <tr>
+                    <td>50354762</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 06:13:02</td>
+                    <td>49100.40</td>
+                    <td>2026-01-22 06:13:35</td>
+                    <td>49090.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50354764</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 06:13:01</td>
+                    <td>25366.90</td>
+                    <td>2026-01-22 06:13:49</td>
+                    <td>25355.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.5</td>
+                    <td class="negative">£-11.50</td>
+                </tr>
+
+                <tr>
+                    <td>50354972</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 06:19:02</td>
+                    <td>49090.50</td>
+                    <td>2026-01-22 06:22:13</td>
+                    <td>49080.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50354977</td>
+                    <td>XAUUSD_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 05:58:01</td>
+                    <td>4816.34</td>
+                    <td>2026-01-22 06:22:35</td>
+                    <td>4826.44</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50355000</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 06:16:02</td>
+                    <td>25356.30</td>
+                    <td>2026-01-22 06:23:31</td>
+                    <td>25345.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.5</td>
+                    <td class="negative">£-10.50</td>
+                </tr>
+
+                <tr>
+                    <td>50355091</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 06:25:03</td>
+                    <td>25351.00</td>
+                    <td>2026-01-22 06:26:08</td>
+                    <td>25340.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50355317</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 06:28:01</td>
+                    <td>25351.10</td>
+                    <td>2026-01-22 06:35:59</td>
+                    <td>25371.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.4</td>
+                    <td class="positive">£+20.40</td>
+                </tr>
+
+                <tr>
+                    <td>50355336</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 06:28:03</td>
+                    <td>49075.40</td>
+                    <td>2026-01-22 06:37:38</td>
+                    <td>49096.60</td>
+                    <td>1.0</td>
+                    <td class="positive">+21.2</td>
+                    <td class="positive">£+21.20</td>
+                </tr>
+
+                <tr>
+                    <td>50355640</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 06:53:01</td>
+                    <td>25390.00</td>
+                    <td>2026-01-22 07:00:12</td>
+                    <td>25402.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-12.1</td>
+                    <td class="negative">£-12.10</td>
+                </tr>
+
+                <tr>
+                    <td>50355766</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 07:02:02</td>
+                    <td>25400.60</td>
+                    <td>2026-01-22 07:06:23</td>
+                    <td>25380.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50355910</td>
+                    <td>XAUUSD_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 06:28:02</td>
+                    <td>4826.63</td>
+                    <td>2026-01-22 07:16:16</td>
+                    <td>4836.77</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.14</td>
+                </tr>
+
+                <tr>
+                    <td>50356367</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 07:39:02</td>
+                    <td>25403.90</td>
+                    <td>2026-01-22 07:40:27</td>
+                    <td>25415.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.5</td>
+                    <td class="negative">£-11.50</td>
+                </tr>
+
+                <tr>
+                    <td>50356484</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 07:45:04</td>
+                    <td>49144.70</td>
+                    <td>2026-01-22 07:48:31</td>
+                    <td>49123.90</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.8</td>
+                    <td class="positive">£+20.80</td>
+                </tr>
+
+                <tr>
+                    <td>50356626</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 07:47:02</td>
+                    <td>25431.60</td>
+                    <td>2026-01-22 07:59:16</td>
+                    <td>25442.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.7</td>
+                    <td class="negative">£-10.70</td>
+                </tr>
+
+                <tr>
+                    <td>50356724</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:02:01</td>
+                    <td>25450.00</td>
+                    <td>2026-01-22 08:02:17</td>
+                    <td>25460.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50356876</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:04:02</td>
+                    <td>49154.90</td>
+                    <td>2026-01-22 08:05:28</td>
+                    <td>49165.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50357013</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:10:02</td>
+                    <td>49160.80</td>
+                    <td>2026-01-22 08:11:10</td>
+                    <td>49172.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.2</td>
+                    <td class="negative">£-11.20</td>
+                </tr>
+
+                <tr>
+                    <td>50357014</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:09:01</td>
+                    <td>25469.70</td>
+                    <td>2026-01-22 08:11:10</td>
+                    <td>25480.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.6</td>
+                    <td class="negative">£-10.60</td>
+                </tr>
+
+                <tr>
+                    <td>50357200</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 01:20:06</td>
+                    <td>6896.20</td>
+                    <td>2026-01-22 08:17:33</td>
+                    <td>6906.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50357380</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:20:04</td>
+                    <td>49167.60</td>
+                    <td>2026-01-22 08:23:25</td>
+                    <td>49178.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.6</td>
+                    <td class="negative">£-10.60</td>
+                </tr>
+
+                <tr>
+                    <td>50357384</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:20:02</td>
+                    <td>25483.60</td>
+                    <td>2026-01-22 08:23:35</td>
+                    <td>25493.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50357454</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:26:02</td>
+                    <td>49180.80</td>
+                    <td>2026-01-22 08:27:10</td>
+                    <td>49192.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.4</td>
+                    <td class="negative">£-11.40</td>
+                </tr>
+
+                <tr>
+                    <td>50357620</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:30:06</td>
+                    <td>49191.80</td>
+                    <td>2026-01-22 08:31:42</td>
+                    <td>49203.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.3</td>
+                    <td class="negative">£-11.30</td>
+                </tr>
+
+                <tr>
+                    <td>50357842</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:29:01</td>
+                    <td>25513.50</td>
+                    <td>2026-01-22 08:39:28</td>
+                    <td>25523.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50357901</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:20:03</td>
+                    <td>6904.30</td>
+                    <td>2026-01-22 08:40:32</td>
+                    <td>6914.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.4</td>
+                    <td class="negative">£-10.40</td>
+                </tr>
+
+                <tr>
+                    <td>50358135</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:42:01</td>
+                    <td>25522.90</td>
+                    <td>2026-01-22 08:49:32</td>
+                    <td>25532.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50358160</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:44:01</td>
+                    <td>49225.70</td>
+                    <td>2026-01-22 08:50:28</td>
+                    <td>49236.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.4</td>
+                    <td class="negative">£-10.40</td>
+                </tr>
+
+                <tr>
+                    <td>50358450</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:54:02</td>
+                    <td>49233.80</td>
+                    <td>2026-01-22 09:01:15</td>
+                    <td>49243.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50358784</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:10:03</td>
+                    <td>49252.20</td>
+                    <td>2026-01-22 09:10:56</td>
+                    <td>49262.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50358807</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:54:01</td>
+                    <td>25551.00</td>
+                    <td>2026-01-22 09:11:16</td>
+                    <td>25561.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50358913</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:13:01</td>
+                    <td>49261.80</td>
+                    <td>2026-01-22 09:14:31</td>
+                    <td>49271.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50358996</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 08:44:03</td>
+                    <td>6912.50</td>
+                    <td>2026-01-22 09:17:04</td>
+                    <td>6922.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50359020</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:16:03</td>
+                    <td>49266.00</td>
+                    <td>2026-01-22 09:18:19</td>
+                    <td>49276.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50359029</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:16:02</td>
+                    <td>25562.40</td>
+                    <td>2026-01-22 09:18:31</td>
+                    <td>25572.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50359105</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:19:02</td>
+                    <td>49264.80</td>
+                    <td>2026-01-22 09:21:00</td>
+                    <td>49274.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50359155</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:22:02</td>
+                    <td>49269.80</td>
+                    <td>2026-01-22 09:23:02</td>
+                    <td>49249.10</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.7</td>
+                    <td class="positive">£+20.70</td>
+                </tr>
+
+                <tr>
+                    <td>50359222</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:20:02</td>
+                    <td>25570.00</td>
+                    <td>2026-01-22 09:25:25</td>
+                    <td>25549.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.5</td>
+                    <td class="positive">£+20.50</td>
+                </tr>
+
+                <tr>
+                    <td>50359923</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:37:01</td>
+                    <td>49265.00</td>
+                    <td>2026-01-22 09:41:17</td>
+                    <td>49275.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50359985</td>
+                    <td>XAUUSD_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 07:21:01</td>
+                    <td>4835.86</td>
+                    <td>2026-01-22 09:42:39</td>
+                    <td>4815.73</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.13</td>
+                </tr>
+
+                <tr>
+                    <td>50360307</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>Unknown</td>
+                    <td>10215.80</td>
+                    <td>2026-01-22 09:50:21</td>
+                    <td>10226.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50360931</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:44:01</td>
+                    <td>49275.90</td>
+                    <td>2026-01-22 10:13:22</td>
+                    <td>49255.20</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.7</td>
+                    <td class="positive">£+20.70</td>
+                </tr>
+
+                <tr>
+                    <td>50360932</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:54:01</td>
+                    <td>25562.40</td>
+                    <td>2026-01-22 10:13:22</td>
+                    <td>25542.00</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.4</td>
+                    <td class="positive">£+20.40</td>
+                </tr>
+
+                <tr>
+                    <td>50360998</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 10:14:01</td>
+                    <td>25547.40</td>
+                    <td>2026-01-22 10:16:20</td>
+                    <td>25537.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50361523</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 10:22:01</td>
+                    <td>49239.80</td>
+                    <td>2026-01-22 10:33:01</td>
+                    <td>49259.80</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.0</td>
+                    <td class="positive">£+20.00</td>
+                </tr>
+
+                <tr>
+                    <td>50362005</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:53:02</td>
+                    <td>10221.20</td>
+                    <td>2026-01-22 10:55:26</td>
+                    <td>10201.20</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.0</td>
+                    <td class="positive">£+20.00</td>
+                </tr>
+
+                <tr>
+                    <td>50362115</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 10:56:01</td>
+                    <td>49269.50</td>
+                    <td>2026-01-22 11:01:05</td>
+                    <td>49279.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.4</td>
+                    <td class="negative">£-10.40</td>
+                </tr>
+
+                <tr>
+                    <td>50362141</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 10:21:02</td>
+                    <td>25535.80</td>
+                    <td>2026-01-22 11:02:05</td>
+                    <td>25557.10</td>
+                    <td>1.0</td>
+                    <td class="positive">+21.3</td>
+                    <td class="positive">£+21.30</td>
+                </tr>
+
+                <tr>
+                    <td>50362258</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 11:04:01</td>
+                    <td>25556.60</td>
+                    <td>2026-01-22 11:08:18</td>
+                    <td>25566.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50362405</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 10:58:03</td>
+                    <td>10203.50</td>
+                    <td>2026-01-22 11:13:47</td>
+                    <td>10193.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50362407</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 11:02:02</td>
+                    <td>49275.80</td>
+                    <td>2026-01-22 11:13:47</td>
+                    <td>49255.40</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.4</td>
+                    <td class="positive">£+20.40</td>
+                </tr>
+
+                <tr>
+                    <td>50362512</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 11:12:01</td>
+                    <td>25561.60</td>
+                    <td>2026-01-22 11:15:26</td>
+                    <td>25541.00</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.6</td>
+                    <td class="positive">£+20.60</td>
+                </tr>
+
+                <tr>
+                    <td>50362779</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:17:02</td>
+                    <td>10194.80</td>
+                    <td>2026-01-22 11:21:18</td>
+                    <td>10184.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50362880</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:17:01</td>
+                    <td>49238.00</td>
+                    <td>2026-01-22 11:26:39</td>
+                    <td>49225.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-12.1</td>
+                    <td class="negative">£-12.10</td>
+                </tr>
+
+                <tr>
+                    <td>50362881</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:17:03</td>
+                    <td>25544.90</td>
+                    <td>2026-01-22 11:26:41</td>
+                    <td>25534.20</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.7</td>
+                    <td class="negative">£-10.70</td>
+                </tr>
+
+                <tr>
+                    <td>50362921</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:24:02</td>
+                    <td>10191.10</td>
+                    <td>2026-01-22 11:28:41</td>
+                    <td>10180.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.4</td>
+                    <td class="negative">£-10.40</td>
+                </tr>
+
+                <tr>
+                    <td>50363099</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:30:03</td>
+                    <td>10184.10</td>
+                    <td>2026-01-22 11:34:36</td>
+                    <td>10174.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50363398</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:45:05</td>
+                    <td>49204.20</td>
+                    <td>2026-01-22 11:46:55</td>
+                    <td>49194.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50363750</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:50:03</td>
+                    <td>49200.50</td>
+                    <td>2026-01-22 12:00:46</td>
+                    <td>49225.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+25.0</td>
+                    <td class="positive">£+25.00</td>
+                </tr>
+
+                <tr>
+                    <td>50363830</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:43:01</td>
+                    <td>25535.90</td>
+                    <td>2026-01-22 12:03:02</td>
+                    <td>25525.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50364049</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 12:04:02</td>
+                    <td>49200.90</td>
+                    <td>2026-01-22 12:10:41</td>
+                    <td>49190.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50364472</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 12:05:02</td>
+                    <td>25526.00</td>
+                    <td>2026-01-22 12:27:13</td>
+                    <td>25546.10</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50364598</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 11:45:04</td>
+                    <td>10161.10</td>
+                    <td>2026-01-22 12:31:56</td>
+                    <td>10184.30</td>
+                    <td>1.0</td>
+                    <td class="positive">+23.2</td>
+                    <td class="positive">£+23.20</td>
+                </tr>
+
+                <tr>
+                    <td>50364604</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 12:14:02</td>
+                    <td>49189.40</td>
+                    <td>2026-01-22 12:31:56</td>
+                    <td>49211.80</td>
+                    <td>1.0</td>
+                    <td class="positive">+22.4</td>
+                    <td class="positive">£+22.40</td>
+                </tr>
+
+                <tr>
+                    <td>50364888</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 12:39:03</td>
+                    <td>49225.50</td>
+                    <td>2026-01-22 12:43:53</td>
+                    <td>49235.60</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50364904</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 12:34:02</td>
+                    <td>10181.40</td>
+                    <td>2026-01-22 12:45:00</td>
+                    <td>10191.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50364996</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 12:45:01</td>
+                    <td>49233.80</td>
+                    <td>2026-01-22 12:49:53</td>
+                    <td>49213.70</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50365271</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 12:39:04</td>
+                    <td>25541.10</td>
+                    <td>2026-01-22 12:57:58</td>
+                    <td>25551.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.6</td>
+                    <td class="negative">£-10.60</td>
+                </tr>
+
+                <tr>
+                    <td>50365436</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:00:04</td>
+                    <td>25551.10</td>
+                    <td>2026-01-22 13:01:00</td>
+                    <td>25561.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50365895</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:07:01</td>
+                    <td>49236.80</td>
+                    <td>2026-01-22 13:12:04</td>
+                    <td>49216.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.3</td>
+                    <td class="positive">£+20.30</td>
+                </tr>
+
+                <tr>
+                    <td>50365896</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:06:02</td>
+                    <td>25560.60</td>
+                    <td>2026-01-22 13:12:04</td>
+                    <td>25539.80</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.8</td>
+                    <td class="positive">£+20.80</td>
+                </tr>
+
+                <tr>
+                    <td>50366501</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:21:02</td>
+                    <td>49239.30</td>
+                    <td>2026-01-22 13:22:24</td>
+                    <td>49249.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50367205</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 13:33:00</td>
+                    <td>25562.20</td>
+                    <td>2026-01-22 13:33:37</td>
+                    <td>25550.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-11.8</td>
+                    <td class="negative">£-11.80</td>
+                </tr>
+
+                <tr>
+                    <td>50367317</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:31:02</td>
+                    <td>49253.80</td>
+                    <td>2026-01-22 13:35:18</td>
+                    <td>49264.10</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50367847</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:38:01</td>
+                    <td>49273.50</td>
+                    <td>2026-01-22 13:42:18</td>
+                    <td>49253.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.0</td>
+                    <td class="positive">£+20.00</td>
+                </tr>
+
+                <tr>
+                    <td>50368238</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:37:01</td>
+                    <td>25559.10</td>
+                    <td>2026-01-22 13:47:01</td>
+                    <td>25569.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50368636</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 12:47:01</td>
+                    <td>10186.90</td>
+                    <td>2026-01-22 13:53:20</td>
+                    <td>10197.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50368732</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:51:01</td>
+                    <td>25576.10</td>
+                    <td>2026-01-22 13:57:09</td>
+                    <td>25589.40</td>
+                    <td>1.0</td>
+                    <td class="negative">-13.3</td>
+                    <td class="negative">£-13.30</td>
+                </tr>
+
+                <tr>
+                    <td>50369123</td>
+                    <td>NAS100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 14:02:01</td>
+                    <td>25583.60</td>
+                    <td>2026-01-22 14:06:39</td>
+                    <td>25563.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50369374</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 14:01:02</td>
+                    <td>49311.80</td>
+                    <td>2026-01-22 14:16:12</td>
+                    <td>49321.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50370164</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 13:55:03</td>
+                    <td>10193.90</td>
+                    <td>2026-01-22 14:31:41</td>
+                    <td>10204.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.6</td>
+                    <td class="negative">£-10.60</td>
+                </tr>
+
+                <tr>
+                    <td>50370245</td>
+                    <td>XAUUSD_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 09:43:01</td>
+                    <td>4816.91</td>
+                    <td>2026-01-22 14:32:01</td>
+                    <td>4836.91</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.0</td>
+                    <td class="positive">£+20.00</td>
+                </tr>
+
+                <tr>
+                    <td>50371402</td>
+                    <td>UK100_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 09:37:02</td>
+                    <td>6920.80</td>
+                    <td>2026-01-22 14:40:08</td>
+                    <td>6930.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50372287</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 14:52:03</td>
+                    <td>25452.60</td>
+                    <td>2026-01-22 14:52:14</td>
+                    <td>25472.90</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.3</td>
+                    <td class="positive">£+20.30</td>
+                </tr>
+
+                <tr>
+                    <td>50372306</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 14:52:03</td>
+                    <td>49326.40</td>
+                    <td>2026-01-22 14:52:31</td>
+                    <td>49351.10</td>
+                    <td>1.0</td>
+                    <td class="positive">+24.7</td>
+                    <td class="positive">£+24.70</td>
+                </tr>
+
+                <tr>
+                    <td>50372702</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 14:59:03</td>
+                    <td>49302.70</td>
+                    <td>2026-01-22 14:59:39</td>
+                    <td>49324.30</td>
+                    <td>1.0</td>
+                    <td class="positive">+21.6</td>
+                    <td class="positive">£+21.60</td>
+                </tr>
+
+                <tr>
+                    <td>50372866</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 14:52:04</td>
+                    <td>6907.20</td>
+                    <td>2026-01-22 15:00:10</td>
+                    <td>6896.90</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50373131</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:00:07</td>
+                    <td>10171.00</td>
+                    <td>2026-01-22 15:01:59</td>
+                    <td>10160.70</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.3</td>
+                    <td class="negative">£-10.30</td>
+                </tr>
+
+                <tr>
+                    <td>50373460</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:05:04</td>
+                    <td>49273.50</td>
+                    <td>2026-01-22 15:05:12</td>
+                    <td>49262.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.7</td>
+                    <td class="negative">£-10.70</td>
+                </tr>
+
+                <tr>
+                    <td>50373511</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:05:04</td>
+                    <td>25417.50</td>
+                    <td>2026-01-22 15:06:07</td>
+                    <td>25407.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50373583</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:07:02</td>
+                    <td>49264.50</td>
+                    <td>2026-01-22 15:07:15</td>
+                    <td>49254.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.20</td>
+                </tr>
+
+                <tr>
+                    <td>50373709</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:09:02</td>
+                    <td>25417.80</td>
+                    <td>2026-01-22 15:09:19</td>
+                    <td>25404.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-13.8</td>
+                    <td class="negative">£-13.80</td>
+                </tr>
+
+                <tr>
+                    <td>50373913</td>
+                    <td>US30_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:13:03</td>
+                    <td>49292.50</td>
+                    <td>2026-01-22 15:13:44</td>
+                    <td>49313.40</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.9</td>
+                    <td class="positive">£+20.90</td>
+                </tr>
+
+                <tr>
+                    <td>50374236</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:19:02</td>
+                    <td>25421.90</td>
+                    <td>2026-01-22 15:19:04</td>
+                    <td>25411.80</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.1</td>
+                    <td class="negative">£-10.10</td>
+                </tr>
+
+                <tr>
+                    <td>50374657</td>
+                    <td>NAS100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:26:03</td>
+                    <td>25428.50</td>
+                    <td>2026-01-22 15:26:16</td>
+                    <td>25418.50</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.00</td>
+                </tr>
+
+                <tr>
+                    <td>50374769</td>
+                    <td>XAUUSD_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 14:56:02</td>
+                    <td>4843.98</td>
+                    <td>2026-01-22 15:27:03</td>
+                    <td>4854.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.0</td>
+                    <td class="negative">£-10.02</td>
+                </tr>
+
+                <tr>
+                    <td>50375018</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:14:04</td>
+                    <td>10147.70</td>
+                    <td>2026-01-22 15:31:10</td>
+                    <td>10167.90</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.2</td>
+                    <td class="positive">£+20.20</td>
+                </tr>
+
+                <tr>
+                    <td>50375169</td>
+                    <td>XAUUSD_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 15:28:02</td>
+                    <td>4850.83</td>
+                    <td>2026-01-22 15:34:00</td>
+                    <td>4861.00</td>
+                    <td>1.0</td>
+                    <td class="negative">-10.2</td>
+                    <td class="negative">£-10.17</td>
+                </tr>
+
+                <tr>
+                    <td>50375882</td>
+                    <td>UK100_SB</td>
+                    <td>BUY</td>
+                    <td>2026-01-22 15:05:05</td>
+                    <td>6897.40</td>
+                    <td>2026-01-22 15:46:02</td>
+                    <td>6917.50</td>
+                    <td>1.0</td>
+                    <td class="positive">+20.1</td>
+                    <td class="positive">£+20.10</td>
+                </tr>
+
+                <tr>
+                    <td>50376021</td>
+                    <td>US30_SB</td>
+                    <td>SELL</td>
+                    <td>2026-01-22 15:49:03</td>
+                    <td>49421.00</td>
+                    <td>2026-01-22 15:49:19</td>
+                    <td>49433.30</td>
+                    <td>1.0</td>
+                    <td class="negative">-12.3</td>
+                    <td class="negative">£-12.30</td>
+                </tr>
+
+            </tbody>
+        </table>
+        
+        <script>
+        function copyTableToClipboard() {
+            const table = document.getElementById('tradesTable');
+            const btn = event.target;
+            
+            // Create a range and selection
+            const range = document.createRange();
+            range.selectNode(table);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            
+            try {
+                // Copy to clipboard
+                document.execCommand('copy');
+                
+                // Visual feedback
+                btn.innerHTML = '&#9989; Copied!';
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.innerHTML = '&#128203; Copy Table to Clipboard';
+                    btn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                btn.innerHTML = '&#10060; Failed to copy';
+            }
+            
+            window.getSelection().removeAllRanges();
+        }
+        </script>
+    </div>
+</body>
+</html>
